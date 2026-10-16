@@ -861,7 +861,15 @@ export const pt: TranslationStructure = {
         failedToConnectTerminal: 'Falha ao conectar terminal',
         cameraPermissionsRequiredToConnectTerminal: 'Permissões de câmera são necessárias para conectar terminal',
         failedToLinkDevice: 'Falha ao vincular dispositivo',
-        cameraPermissionsRequiredToScanQr: 'Permissões de câmera são necessárias para escanear códigos QR'
+        cameraPermissionsRequiredToScanQr: 'Permissões de câmera são necessárias para escanear códigos QR',
+        linkDeviceConfirmTitle: 'Vincular um novo dispositivo?',
+        linkDeviceConfirmMessage: 'Isso dá acesso total à sua conta. O novo dispositivo poderá ler todas as suas sessões e agir em seu nome. Continue apenas se este código estiver em um dispositivo que você mesmo está configurando agora.',
+        linkDeviceConfirmButton: 'Vincular dispositivo',
+        linkDeviceOutdated: 'Este código é de uma versão antiga do Happy. Atualize o Happy no novo dispositivo e escaneie novamente, ou restaure-o com sua chave secreta.',
+        linkDeviceAlreadyAnsweredTitle: 'Solicitação de vínculo já respondida',
+        linkDeviceAlreadyAnsweredMessage: 'Outra pessoa respondeu a esta solicitação de vínculo antes de você. O novo dispositivo pode ter entrado em outra conta. Não o use: saia da conta nele e vincule-o novamente.',
+        accountLinkRejectedTitle: 'Login não realizado',
+        accountLinkRejectedMessage: 'A resposta não veio do seu outro telefone. Seu servidor ou sua rede podem estar adulterando o vínculo. Nada foi salvo.'
     },
 
     navigation: {

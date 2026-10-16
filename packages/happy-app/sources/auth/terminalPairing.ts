@@ -42,7 +42,7 @@ export function parseTerminalPairingUrl(url: string): TerminalPairingLink | null
         return parseV3(new URLSearchParams(url.slice(TERMINAL_PAIRING_URL_PREFIX.length)));
     }
     if (url.startsWith(LEGACY_TERMINAL_URL_PREFIX)) {
-        const publicKey = decodeKey(url.slice(LEGACY_TERMINAL_URL_PREFIX.length));
+        const publicKey = decodePairingKey(url.slice(LEGACY_TERMINAL_URL_PREFIX.length));
         return publicKey ? { version: 2, publicKey } : null;
     }
     return null;
@@ -58,7 +58,7 @@ export function parseTerminalPairingFragment(hash: string): TerminalPairingLink 
     if (params.has('v') || params.has('s')) {
         return params.get('v') === '3' ? parseV3(params) : null;
     }
-    const publicKey = decodeKey(params.get('key'));
+    const publicKey = decodePairingKey(params.get('key'));
     return publicKey ? { version: 2, publicKey } : null;
 }
 
@@ -90,16 +90,16 @@ export function buildTerminalPairingPayload(link: TerminalPairingLink, contentPu
 }
 
 function parseV3(params: URLSearchParams): TerminalPairingLink | null {
-    const publicKey = decodeKey(params.get('key'));
-    const pairingSecret = decodeKey(params.get('s'));
+    const publicKey = decodePairingKey(params.get('key'));
+    const pairingSecret = decodePairingKey(params.get('s'));
     if (!publicKey || !pairingSecret) {
         return null;
     }
     return { version: 3, publicKey, pairingSecret };
 }
 
-// The base64 helpers are lenient, so check the alphabet and the decoded length.
-function decodeKey(value: string | null): Uint8Array | null {
+/** Strict base64url decode of a 32-byte link value. The base64 helpers are lenient, so check the alphabet and the decoded length. */
+export function decodePairingKey(value: string | null): Uint8Array | null {
     if (!value || !/^[A-Za-z0-9_-]+={0,2}$/.test(value)) {
         return null;
     }
