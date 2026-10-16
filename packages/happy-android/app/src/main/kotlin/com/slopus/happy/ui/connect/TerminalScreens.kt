@@ -61,12 +61,13 @@ object TerminalScreenSpec {
 
 /**
  * Confirming a terminal that asked by link (terminal/index.tsx, reached by
+ * `happy://pair/terminal?key=<key>&s=<secret>` or an older CLI's
  * `happy://terminal?<key>`). Spec: a hero group (48 terminal icon in
  * radio.active, 16 above the title 20 semibold, 12 above the description
  * 14/20 secondary; 24/16 padding, centred); "Connection Details" with the
  * key's first 12 characters and the encryption, 29 icons; Accept (large,
  * "Connecting..." while busy) and Reject (large, quiet) 12 apart in 16
- * padding; and the Security group with its footer. Without a key: a
+ * padding; and the Security group with its footer. Without a valid link: a
  * warning group (48 warning icon, 16/8 gaps, 16 semibold title and 14/20
  * text, both destructive and secondary; 32/16 padding).
  */

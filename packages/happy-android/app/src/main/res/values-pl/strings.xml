@@ -806,6 +806,8 @@
     <string name="terminal_client_side_processing">Przetwarzanie po stronie klienta</string>
     <string name="terminal_link_processed_locally">Link przetworzony lokalnie w przeglądarce</string>
     <string name="terminal_link_processed_on_device">Link przetworzony lokalnie na urządzeniu</string>
+    <string name="terminal_already_connected_title">Terminal jest już połączony</string>
+    <string name="terminal_already_connected_message">Ktoś inny mógł połączyć ten terminal przed Tobą. Nie używaj go. Na komputerze uruchom `happy auth logout`, a potem `happy auth login` i zeskanuj nowy kod.</string>
 
     <string name="modals_authenticate_terminal">Uwierzytelnij terminal</string>
     <string name="modals_paste_url_from_terminal">Wklej URL uwierzytelnienia z terminala</string>

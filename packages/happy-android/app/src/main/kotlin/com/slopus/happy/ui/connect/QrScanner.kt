@@ -91,9 +91,11 @@ fun rememberQrScanner(): QrScanner {
 
 /**
  * The scan listeners in useConnectTerminal.ts and useConnectAccount.ts act
- * only on codes with their own prefix; anything else, a cancel or a failed
- * scan is dropped without a word (`launchScanner`'s rejection is never
- * caught there). Returns the link to process, or null.
+ * only on codes of their own kind ([accepts]: the terminal links'
+ * [com.slopus.happy.auth.isTerminalLink], the account link's prefix);
+ * anything else, a cancel or a failed scan is dropped without a word
+ * (`launchScanner`'s rejection is never caught there). Returns the link to
+ * process, or null.
  */
-fun acceptScan(result: ScanResult, prefix: String): String? =
-    (result as? ScanResult.Scanned)?.value?.takeIf { it.startsWith(prefix) }
+fun acceptScan(result: ScanResult, accepts: (String) -> Boolean): String? =
+    (result as? ScanResult.Scanned)?.value?.takeIf(accepts)

@@ -163,7 +163,7 @@ private fun PasteLinkPrompt(connect: ConnectFlow, onDone: () -> Unit) {
         prompt = Prompt(
             title = stringResource(R.string.onboarding_paste_link_title),
             message = stringResource(R.string.onboarding_paste_link_message),
-            placeholder = "happy://terminal?...",
+            placeholder = "happy://pair/terminal?...",
             cancelText = stringResource(R.string.common_cancel),
             confirmText = stringResource(R.string.onboarding_paste_link_confirm),
             onResult = { url -> url?.trim()?.takeIf { it.isNotEmpty() }?.let(connect::connectWithUrl) },

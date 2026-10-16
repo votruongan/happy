@@ -27,6 +27,7 @@ import org.junit.After
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -114,8 +115,10 @@ class OnboardingFlowTest {
         val account = graph.auth.state.value as AuthState.SignedIn
 
         val terminal = Sodium.boxKeypair()
+        val pairingSecret = ByteArray(32) { 5 }
+        // A requester that says it is v1 still gets the v3 reply its link asks for.
         server.addTerminalRequest(terminal.publicKey, supportsV2 = false)
-        DeepLinks.offer(DeepLink.Terminal(encodeBase64(terminal.publicKey, Base64Variant.Url)))
+        DeepLinks.offer(DeepLink.Terminal(encodeBase64(terminal.publicKey, Base64Variant.Url), encodeBase64(pairingSecret, Base64Variant.Url)))
 
         rule.waitUntilAtLeastOneExists(hasText("Accept Connection"), 5_000)
         rule.onNodeWithText("Accept Connection").performClick()
@@ -123,8 +126,24 @@ class OnboardingFlowTest {
         val key = encodeBase64(terminal.publicKey)
         rule.waitUntil(5_000) { synchronized(server) { server.terminalRequests.getValue(key).response != null } }
         val response = synchronized(server) { server.terminalRequests.getValue(key).response!! }
-        assertArrayEquals(account.credentials.secretBytes(), decryptBox(decodeBase64(response), terminal.secretKey))
+        assertArrayEquals(
+            byteArrayOf(3) + account.encryption.contentPublicKey + pairingSecret,
+            decryptBox(decodeBase64(response), terminal.secretKey),
+        )
         assertNull(DeepLinks.pending.value)
+    }
+
+    @Test
+    fun aPairingLinkWithoutItsSecretIsAnInvalidLink() {
+        rule.onNodeWithText("Create account").performClick()
+        rule.waitUntilAtLeastOneExists(hasTestTag(HomeTags.FILTER), 5_000)
+        val terminal = Sodium.boxKeypair()
+        server.addTerminalRequest(terminal.publicKey, supportsV2 = true)
+        DeepLinks.offer(DeepLink.Terminal(encodeBase64(terminal.publicKey, Base64Variant.Url), ""))
+
+        rule.waitUntilAtLeastOneExists(hasText("Invalid Connection Link"), 5_000)
+        rule.onNodeWithText("Accept Connection").assertDoesNotExist()
+        assertTrue(server.requestsTo("/v1/auth/response").isEmpty())
     }
 
     @Test

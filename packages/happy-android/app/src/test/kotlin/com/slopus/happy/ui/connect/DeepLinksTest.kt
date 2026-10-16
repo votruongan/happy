@@ -3,6 +3,9 @@ package com.slopus.happy.ui.connect
 import android.content.Intent
 import android.net.Uri
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.slopus.happy.auth.TerminalLink
+import com.slopus.happy.crypto.Base64Variant
+import com.slopus.happy.crypto.encodeBase64
 import com.slopus.happy.ui.RestoreManualRoute
 import com.slopus.happy.ui.RestoreRoute
 import com.slopus.happy.ui.ServerRoute
@@ -49,6 +52,33 @@ class DeepLinksTest {
         // No key: the screen says the link is invalid.
         assertEquals(DeepLink.Terminal(null), parseDeepLink("happy://terminal"))
         assertEquals(DeepLink.Terminal(null), parseDeepLink("happy://terminal?"))
+    }
+
+    @Test
+    fun aV3PairingLinkCarriesItsSecretToTheConfirmScreen() {
+        val secret = "U2VjcmV0LXBhaXJpbmctdmFsdWUtZm9yLXRlc3RzLTEyMw"
+        assertEquals(DeepLink.Terminal(key, secret), parseDeepLink("happy://pair/terminal?key=$key&s=$secret"))
+        assertEquals(DeepLink.Terminal(key, secret), parseDeepLink("happy:///pair/terminal?s=$secret&key=$key"))
+        assertEquals(DeepLink.Terminal(key, secret), parseDeepLink("https://app.happy.engineering/pair/terminal?key=$key&s=$secret"))
+        // terminal/index.tsx reads key and s too.
+        assertEquals(DeepLink.Terminal(key, secret), parseDeepLink("happy://terminal?key=$key&s=$secret"))
+        // Without its secret it is invalid, never an older CLI's link.
+        assertEquals(DeepLink.Terminal("", ""), parseDeepLink("happy://pair/terminal"))
+        assertEquals(DeepLink.Terminal(key, ""), parseDeepLink("happy://pair/terminal?key=$key"))
+        assertNull(TerminalRoute(key, "").link)
+        // The secret stays out of logs.
+        assertFalse(secret in DeepLink.Terminal(key, secret).toString())
+        assertFalse(secret in TerminalRoute(key, secret).toString())
+    }
+
+    @Test
+    fun theConfirmScreenAnswersOnlyALinkThatParses() {
+        val pk = encodeBase64(ByteArray(32) { 1 }, Base64Variant.Url)
+        val ps = encodeBase64(ByteArray(32) { 2 }, Base64Variant.Url)
+        assertEquals(TerminalLink.V3(ByteArray(32) { 1 }, ByteArray(32) { 2 }), TerminalRoute(pk, ps).link)
+        assertEquals(TerminalLink.Legacy(ByteArray(32) { 1 }), TerminalRoute(pk).link)
+        assertNull(TerminalRoute(key).link)
+        assertNull(TerminalRoute(null).link)
     }
 
     @Test

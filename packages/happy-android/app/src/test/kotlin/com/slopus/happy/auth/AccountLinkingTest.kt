@@ -3,6 +3,7 @@ package com.slopus.happy.auth
 import com.slopus.happy.crypto.AccountEncryption
 import com.slopus.happy.crypto.AccountLink
 import com.slopus.happy.crypto.Base64Variant
+import com.slopus.happy.crypto.SecureRandomSource
 import com.slopus.happy.crypto.Sodium
 import com.slopus.happy.crypto.decodeBase64
 import com.slopus.happy.crypto.decryptBox
@@ -17,6 +18,8 @@ import okhttp3.OkHttpClient
 import org.junit.After
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
@@ -113,57 +116,130 @@ class AccountLinkingTest {
         }
     }
 
-    private fun terminal(supportsV2: Boolean): Pair<Sodium.KeyPair, String> {
+    private class Terminal(val keyPair: Sodium.KeyPair, val pairingSecret: ByteArray, val v3Url: String, val legacyUrl: String)
+
+    private fun terminal(supportsV2: Boolean): Terminal {
         val keyPair = Sodium.boxKeypair()
+        val pairingSecret = SecureRandomSource.nextBytes(32)
         server.addTerminalRequest(keyPair.publicKey, supportsV2)
-        return keyPair to TERMINAL_URL_PREFIX + encodeBase64(keyPair.publicKey, Base64Variant.Url)
+        val key = encodeBase64(keyPair.publicKey, Base64Variant.Url)
+        return Terminal(
+            keyPair,
+            pairingSecret,
+            v3Url = "${TERMINAL_PAIRING_URL_PREFIX}key=$key&s=${encodeBase64(pairingSecret, Base64Variant.Url)}",
+            legacyUrl = LEGACY_TERMINAL_URL_PREFIX + key,
+        )
     }
 
-    private fun answerFor(keyPair: Sodium.KeyPair): ByteArray? =
-        server.terminalRequests.getValue(encodeBase64(keyPair.publicKey)).response?.let { decryptBox(decodeBase64(it), keyPair.secretKey) }
+    private fun answerFor(terminal: Terminal): ByteArray? =
+        server.terminalRequests.getValue(encodeBase64(terminal.keyPair.publicKey)).response
+            ?.let { decryptBox(decodeBase64(it), terminal.keyPair.secretKey) }
+
+    private val contentPublicKey get() = AccountEncryption.create(server.secret).contentPublicKey
 
     @Test
-    fun aV2TerminalGetsTheContentKeyNotTheSecret() = runBlocking {
-        val (keyPair, url) = terminal(supportsV2 = true)
-        approveTerminal(api, credentials, server.encryption, url)
-        val answer = answerFor(keyPair)!!
-        assertEquals(33, answer.size)
-        assertEquals(0, answer[0].toInt())
-        assertArrayEquals(AccountEncryption.create(server.secret).contentPublicKey, answer.copyOfRange(1, 33))
+    fun aV3TerminalGetsTheContentKeyAndItsPairingSecret() = runBlocking {
+        val terminal = terminal(supportsV2 = true)
+        approveTerminal(api, credentials, server.encryption, terminal.v3Url)
+        val answer = answerFor(terminal)!!
+        assertEquals(65, answer.size)
+        assertEquals(3, answer[0].toInt())
+        assertArrayEquals(contentPublicKey, answer.copyOfRange(1, 33))
+        assertArrayEquals(terminal.pairingSecret, answer.copyOfRange(33, 65))
 
         val status = server.requestsTo("/v1/auth/request/status").single()
-        assertEquals(encodeBase64(keyPair.publicKey), status.url.queryParameter("publicKey"))
+        assertEquals(encodeBase64(terminal.keyPair.publicKey), status.url.queryParameter("publicKey"))
         val post = server.requestsTo("/v1/auth/response").single()
         assertEquals("Bearer ${server.token}", post.headers["Authorization"])
     }
 
     @Test
-    fun aV1TerminalGetsTheSecret() = runBlocking {
-        val (keyPair, url) = terminal(supportsV2 = false)
-        approveTerminal(api, credentials, server.encryption, url)
-        assertArrayEquals(server.secret, answerFor(keyPair))
+    fun anOlderTerminalGetsTheContentKeyNotTheSecret() = runBlocking {
+        val terminal = terminal(supportsV2 = true)
+        approveTerminal(api, credentials, server.encryption, terminal.legacyUrl)
+        val answer = answerFor(terminal)!!
+        assertEquals(33, answer.size)
+        assertEquals(0, answer[0].toInt())
+        assertArrayEquals(contentPublicKey, answer.copyOfRange(1, 33))
     }
 
     @Test
-    fun anAnsweredOrUnknownTerminalNeedsNothing() = runBlocking {
-        val (keyPair, url) = terminal(supportsV2 = true)
-        approveTerminal(api, credentials, server.encryption, url)
-        val first = server.terminalRequests.getValue(encodeBase64(keyPair.publicKey)).response
-        approveTerminal(api, credentials, server.encryption, url)
-        assertEquals(first, server.terminalRequests.getValue(encodeBase64(keyPair.publicKey)).response)
+    fun aTerminalThatSaysItIsV1NeverGetsTheSecret() = runBlocking {
+        // supportsV2 comes from whoever made the request, so it picks nothing.
+        val v3 = terminal(supportsV2 = false)
+        approveTerminal(api, credentials, server.encryption, v3.v3Url)
+        assertArrayEquals(byteArrayOf(3) + contentPublicKey + v3.pairingSecret, answerFor(v3))
 
-        val unknown = TERMINAL_URL_PREFIX + encodeBase64(Sodium.boxKeypair().publicKey, Base64Variant.Url)
-        approveTerminal(api, credentials, server.encryption, unknown)
+        val legacy = terminal(supportsV2 = false)
+        approveTerminal(api, credentials, server.encryption, legacy.legacyUrl)
+        assertArrayEquals(byteArrayOf(0) + contentPublicKey, answerFor(legacy))
+
+        for (answer in listOf(answerFor(v3)!!, answerFor(legacy)!!)) {
+            assertNotEquals(32, answer.size)
+            assertFalse(answer.toList().windowed(32).any { it.toByteArray().contentEquals(server.secret) })
+        }
+    }
+
+    @Test
+    fun anAnsweredTerminalIsAWarningNotSuccess() = runBlocking {
+        val terminal = terminal(supportsV2 = true)
+        approveTerminal(api, credentials, server.encryption, terminal.v3Url)
+        val first = server.terminalRequests.getValue(encodeBase64(terminal.keyPair.publicKey)).response
+        try {
+            approveTerminal(api, credentials, server.encryption, terminal.v3Url)
+            fail("an answered request counted as connected")
+        } catch (_: TerminalAlreadyAnsweredException) {
+        }
+        assertEquals(first, server.terminalRequests.getValue(encodeBase64(terminal.keyPair.publicKey)).response)
         assertEquals(1, server.requestsTo("/v1/auth/response").size)
     }
 
     @Test
-    fun aTerminalLinkMustHaveTheTerminalPrefix() = runBlocking {
-        val (keyPair, _) = terminal(supportsV2 = true)
+    fun anAnswerThatLosesTheRaceIsAWarning() = runBlocking {
+        val terminal = terminal(supportsV2 = true)
+        val request = server.terminalRequests.getValue(encodeBase64(terminal.keyPair.publicKey))
+        request.response = encodeBase64(byteArrayOf(1, 2, 3))
+        request.answeredUnseen = true
         try {
-            approveTerminal(api, credentials, server.encryption, AccountLink.linkUrl(keyPair.publicKey))
-            fail("accepted an account link")
-        } catch (_: InvalidLinkException) {
+            approveTerminal(api, credentials, server.encryption, terminal.v3Url)
+            fail("a 409 counted as connected")
+        } catch (_: TerminalAlreadyAnsweredException) {
+        }
+        assertEquals(1, server.requestsTo("/v1/auth/response").size)
+        assertEquals(encodeBase64(byteArrayOf(1, 2, 3)), request.response)
+    }
+
+    @Test
+    fun anUnknownTerminalIsAnError() = runBlocking {
+        val unknown = LEGACY_TERMINAL_URL_PREFIX + encodeBase64(Sodium.boxKeypair().publicKey, Base64Variant.Url)
+        try {
+            approveTerminal(api, credentials, server.encryption, unknown)
+            fail("an unknown request counted as connected")
+        } catch (_: TerminalAlreadyAnsweredException) {
+            fail("an unknown request is not a warning")
+        } catch (_: IllegalStateException) {
+        }
+        assertTrue(server.requestsTo("/v1/auth/response").isEmpty())
+    }
+
+    @Test
+    fun aTerminalLinkMustBeValid() = runBlocking {
+        val terminal = terminal(supportsV2 = true)
+        val key = encodeBase64(terminal.keyPair.publicKey, Base64Variant.Url)
+        val short = encodeBase64(ByteArray(31), Base64Variant.Url)
+        for (url in listOf(
+            AccountLink.linkUrl(terminal.keyPair.publicKey),
+            "${TERMINAL_PAIRING_URL_PREFIX}key=$key",
+            "${TERMINAL_PAIRING_URL_PREFIX}key=$key&s=$short",
+            LEGACY_TERMINAL_URL_PREFIX + short,
+            "happy://terminal?abc",
+            "",
+        )) {
+            try {
+                approveTerminal(api, credentials, server.encryption, url)
+                fail("accepted $url")
+            } catch (_: InvalidLinkException) {
+            }
         }
         assertTrue(server.requestsTo("/v1/auth/request/status").isEmpty())
     }
