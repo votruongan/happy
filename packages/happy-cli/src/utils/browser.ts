@@ -15,7 +15,8 @@ export async function openBrowser(url: string): Promise<boolean> {
             return false;
         }
 
-        logger.debug(`[browser] Attempting to open URL: ${url}`);
+        // Log the origin only: the URL can carry secrets in its query or fragment (pairing secret).
+        logger.debug(`[browser] Attempting to open URL on ${new URL(url).origin}`);
         await open(url);
         logger.debug('[browser] Browser opened successfully');
         return true;

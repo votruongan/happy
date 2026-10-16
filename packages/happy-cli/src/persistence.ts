@@ -5,7 +5,7 @@
  */
 
 import { FileHandle } from 'node:fs/promises'
-import { readFile, writeFile, mkdir, open, unlink, rename, stat } from 'node:fs/promises'
+import { readFile, writeFile, mkdir, open, unlink, rename, stat, chmod } from 'node:fs/promises'
 import { existsSync, writeFileSync, readFileSync, unlinkSync, renameSync, linkSync } from 'node:fs'
 import { constants } from 'node:fs'
 import os from 'node:os'
@@ -260,24 +260,23 @@ export async function readCredentials(): Promise<Credentials | null> {
   return null
 }
 
-export async function writeCredentialsLegacy(credentials: { secret: Uint8Array, token: string }): Promise<void> {
-  if (!existsSync(configuration.happyHomeDir)) {
-    await mkdir(configuration.happyHomeDir, { recursive: true })
-  }
-  await writeFile(configuration.privateKeyFile, JSON.stringify({
-    secret: encodeBase64(credentials.secret),
-    token: credentials.token
-  }, null, 2));
-}
-
 export async function writeCredentialsDataKey(credentials: { publicKey: Uint8Array, machineKey: Uint8Array, token: string }): Promise<void> {
-  if (!existsSync(configuration.happyHomeDir)) {
-    await mkdir(configuration.happyHomeDir, { recursive: true })
+  // The file holds the token and machine key: keep it private to the user, and
+  // never expose a partial file (write a 0600 temp file, then rename over it).
+  await mkdir(configuration.happyHomeDir, { recursive: true, mode: 0o700 })
+  await chmod(configuration.happyHomeDir, 0o700)
+  const temporaryFile = `${configuration.privateKeyFile}.${process.pid}.tmp`
+  const file = await open(temporaryFile, 'w', 0o600)
+  try {
+    await file.writeFile(JSON.stringify({
+      encryption: { publicKey: encodeBase64(credentials.publicKey), machineKey: encodeBase64(credentials.machineKey) },
+      token: credentials.token
+    }, null, 2))
+    await file.sync()
+  } finally {
+    await file.close()
   }
-  await writeFile(configuration.privateKeyFile, JSON.stringify({
-    encryption: { publicKey: encodeBase64(credentials.publicKey), machineKey: encodeBase64(credentials.machineKey) },
-    token: credentials.token
-  }, null, 2));
+  await rename(temporaryFile, configuration.privateKeyFile)
 }
 
 export async function clearCredentials(): Promise<void> {
