@@ -38,7 +38,7 @@ function useScanActions(options: { onSuccess: () => void; onError?: () => void }
             t('onboarding.pasteLinkTitle'),
             t('onboarding.pasteLinkMessage'),
             {
-                placeholder: 'happy://terminal?...',
+                placeholder: 'happy://pair/terminal?...',
                 cancelText: t('common.cancel'),
                 confirmText: t('onboarding.pasteLinkConfirm'),
             },

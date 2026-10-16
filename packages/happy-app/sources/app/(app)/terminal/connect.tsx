@@ -10,39 +10,39 @@ import { ItemList } from '@/components/ItemList';
 import { ItemGroup } from '@/components/ItemGroup';
 import { Item } from '@/components/Item';
 import { t } from '@/text';
+import { encodeBase64 } from '@/encryption/base64';
+import { formatTerminalPairingUrl, parseTerminalPairingFragment, TerminalPairingLink } from '@/auth/terminalPairing';
 
 export default function TerminalConnectScreen() {
     const router = useRouter();
-    const [publicKey, setPublicKey] = useState<string | null>(null);
+    const [link, setLink] = useState<TerminalPairingLink | null>(null);
     const [hashProcessed, setHashProcessed] = useState(false);
     const { processAuthUrl, isLoading } = useConnectTerminal({
         onSuccess: () => {
             router.back();
         }
     });
+    const publicKey = link ? encodeBase64(link.publicKey, 'base64url') : null;
 
-    // Extract key from hash on web platform
+    // Read the link from the fragment on web: `#v=3&key=<pk>&s=<ps>` from
+    // current CLIs, `#key=<pk>` from older ones. The fragment never reaches
+    // the web host.
     useEffect(() => {
         if (Platform.OS === 'web' && typeof window !== 'undefined' && !hashProcessed) {
             const hash = window.location.hash;
-            if (hash.startsWith('#key=')) {
-                const key = hash.substring(5); // Remove '#key='
-                setPublicKey(key);
-                
+            if (hash) {
+                setLink(parseTerminalPairingFragment(hash));
+
                 // Clear the hash from URL to prevent exposure in browser history
                 window.history.replaceState(null, '', window.location.pathname + window.location.search);
-                setHashProcessed(true);
-            } else {
-                setHashProcessed(true);
             }
+            setHashProcessed(true);
         }
     }, [hashProcessed]);
 
     const handleConnect = async () => {
-        if (publicKey) {
-            // Convert the hash key format to the expected happy:// URL format
-            const authUrl = `happy://terminal?${publicKey}`;
-            await processAuthUrl(authUrl);
+        if (link) {
+            await processAuthUrl(formatTerminalPairingUrl(link));
         }
     };
 

@@ -11,23 +11,34 @@ import { ItemGroup } from '@/components/ItemGroup';
 import { Item } from '@/components/Item';
 import { useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
+import { encodeBase64 } from '@/encryption/base64';
+import {
+    formatTerminalPairingUrl,
+    LEGACY_TERMINAL_URL_PREFIX,
+    parseTerminalPairingUrl,
+    TERMINAL_PAIRING_URL_PREFIX,
+} from '@/auth/terminalPairing';
 
 export default function TerminalScreen() {
     const router = useRouter();
     const searchParams = useLocalSearchParams();
     const { theme } = useUnistyles();
 
-    // const [urlProcessed, setUrlProcessed] = useState(false);
-    const publicKey = React.useMemo(() => {
+    // Deep links: `happy://pair/terminal?key=<pk>&s=<ps>` (current CLIs, also
+    // routed here from pair/terminal) and `happy://terminal?<pk>` (older CLIs,
+    // where the key is the first search param's name).
+    const link = React.useMemo(() => {
+        const { key, s } = searchParams;
+        if (typeof key === 'string' && typeof s === 'string') {
+            return parseTerminalPairingUrl(`${TERMINAL_PAIRING_URL_PREFIX}key=${key}&s=${s}`);
+        }
         const keys = Object.keys(searchParams);
         if (keys.length > 0) {
-            // If we have any search params, the first one should be our key
-            const key = keys[0];
-            return key;
-        } else {
-            return null;
+            return parseTerminalPairingUrl(`${LEGACY_TERMINAL_URL_PREFIX}${keys[0]}`);
         }
-    }, [searchParams])
+        return null;
+    }, [searchParams]);
+    const publicKey = link ? encodeBase64(link.publicKey, 'base64url') : null;
     const { processAuthUrl, isLoading } = useConnectTerminal({
         onSuccess: () => {
             router.back();
@@ -35,10 +46,8 @@ export default function TerminalScreen() {
     });
 
     const handleConnect = async () => {
-        if (publicKey) {
-            // Use the full happy:// URL format expected by the hook
-            const authUrl = `happy://terminal?${publicKey}`;
-            await processAuthUrl(authUrl);
+        if (link) {
+            await processAuthUrl(formatTerminalPairingUrl(link));
         }
     };
 
