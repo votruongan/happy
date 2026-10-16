@@ -1,6 +1,6 @@
 package com.slopus.happy.ui.connect
 
-import com.slopus.happy.auth.TERMINAL_URL_PREFIX
+import com.slopus.happy.auth.isTerminalLink
 import com.slopus.happy.crypto.AccountLink
 
 /**
@@ -9,7 +9,7 @@ import com.slopus.happy.crypto.AccountLink
  * (AGENTS.md, design decisions: QR codes).
  */
 sealed interface HappyCode {
-    /** `happy://terminal?…`: a terminal asking to join this account. */
+    /** `happy://pair/terminal?…` or an older CLI's `happy://terminal?…`: a terminal asking to join this account. */
     data class Terminal(val url: String) : HappyCode
 
     /** `happy:///account?…`: a new phone asking for this account. */
@@ -38,7 +38,7 @@ sealed interface HappyCode {
             return when {
                 // Before the others: a pairing code must never reach relay approval.
                 isAgentPairing(text) -> AgentPairing(text)
-                text.startsWith(TERMINAL_URL_PREFIX) -> Terminal(text)
+                isTerminalLink(text) -> Terminal(text)
                 text.startsWith(AccountLink.URL_PREFIX) -> Account(text)
                 lower.startsWith("happy:") -> UnknownHappy(text)
                 else -> NotHappy(text)

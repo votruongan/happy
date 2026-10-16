@@ -633,7 +633,12 @@ class FakeHappyServer(secret: ByteArray = ByteArray(32) { (it * 7 + 1).toByte() 
 
     // Device and terminal linking (authRoutes.ts)
 
-    class TerminalRequest(val supportsV2: Boolean, var response: String? = null)
+    /**
+     * [answeredUnseen]: the status still says `pending` after an answer is
+     * stored, as when another answer lands between the phone's status check
+     * and its own answer.
+     */
+    class TerminalRequest(val supportsV2: Boolean, var response: String? = null, var answeredUnseen: Boolean = false)
 
     /** Terminals waiting to be approved, by base64 box public key (what `/v1/auth/request` would create). */
     val terminalRequests = mutableMapOf<String, TerminalRequest>()
@@ -659,7 +664,7 @@ class FakeHappyServer(secret: ByteArray = ByteArray(32) { (it * 7 + 1).toByte() 
     private fun terminalStatus(publicKey: String?): MockResponse {
         val request = boxKey(publicKey)?.let { terminalRequests[it] }
             ?: return json(200, """{"status":"not_found","supportsV2":false}""")
-        if (request.response != null) return json(200, """{"status":"authorized","supportsV2":false}""")
+        if (request.response != null && !request.answeredUnseen) return json(200, """{"status":"authorized","supportsV2":false}""")
         return json(200, """{"status":"pending","supportsV2":${request.supportsV2}}""")
     }
 
@@ -672,12 +677,18 @@ class FakeHappyServer(secret: ByteArray = ByteArray(32) { (it * 7 + 1).toByte() 
         return json(200, """{"state":"authorized","token":"$token","response":"$response"}""")
     }
 
-    /** `/v1/auth/response` and `/v1/auth/account/response`: the first answer to a known request sticks. */
+    /**
+     * `/v1/auth/response` and `/v1/auth/account/response`: the first answer
+     * to a known request sticks. The same answer again succeeds; any other
+     * gets 409.
+     */
     private fun answer(request: RecordedRequest, pending: Map<String, String?>, store: (String, String) -> Unit): MockResponse {
         val body = HappyJson.parseToJsonElement(request.body!!.utf8()).jsonObject
         val key = boxKey(body.getValue("publicKey").jsonPrimitive.content) ?: return json(401, """{"error":"Invalid public key"}""")
         if (key !in pending) return json(404, """{"error":"Request not found"}""")
-        if (pending[key] == null) store(key, body.getValue("response").jsonPrimitive.content)
+        val response = body.getValue("response").jsonPrimitive.content
+        val stored = pending[key]
+        if (stored == null) store(key, response) else if (stored != response) return json(409, """{"error":"already-answered"}""")
         return json(200, """{"success":true}""")
     }
 

@@ -3,6 +3,7 @@ package com.slopus.happy.ui.home
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -11,7 +12,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.AppGraph
 import com.slopus.happy.auth.AuthState
-import com.slopus.happy.auth.TERMINAL_URL_PREFIX
+import com.slopus.happy.auth.LEGACY_TERMINAL_URL_PREFIX
 import com.slopus.happy.crypto.Base64Variant
 import com.slopus.happy.crypto.Sodium
 import com.slopus.happy.crypto.decodeBase64
@@ -38,9 +39,9 @@ import org.robolectric.annotation.GraphicsMode
 
 /**
  * The empty home's link state against the in-memory server: its Scan QR code
- * approves the terminal with the account already signed in (no second
- * account, unlike the signed-out Add), and with no scanner it asks for the
- * link; cancelling that leaves home as it was.
+ * asks first, then approves the terminal with the account already signed in
+ * (no second account, unlike the signed-out Add), and with no scanner it
+ * asks for the link; cancelling that leaves home as it was.
  */
 @OptIn(ExperimentalTestApi::class)
 @RunWith(AndroidJUnit4::class)
@@ -78,14 +79,20 @@ class LinkFromEmptyHomeTest {
         val account = graph.auth.state.value as AuthState.SignedIn
         val terminal = Sodium.boxKeypair()
         server.addTerminalRequest(terminal.publicKey, supportsV2 = false)
-        scan = ScanResult.Scanned(TERMINAL_URL_PREFIX + encodeBase64(terminal.publicKey, Base64Variant.Url))
+        scan = ScanResult.Scanned(LEGACY_TERMINAL_URL_PREFIX + encodeBase64(terminal.publicKey, Base64Variant.Url))
 
         rule.onNodeWithText("Scan QR code").performClick()
+        rule.waitUntilAtLeastOneExists(hasText("Accept Connection"), 5_000)
+        rule.onNodeWithText("Accept Connection").performClick()
 
         val key = encodeBase64(terminal.publicKey)
         rule.waitUntil(5_000) { synchronized(server) { server.terminalRequests.getValue(key).response != null } }
         val response = synchronized(server) { server.terminalRequests.getValue(key).response!! }
-        assertArrayEquals(account.credentials.secretBytes(), decryptBox(decodeBase64(response), terminal.secretKey))
+        // An older CLI's link gets the content public key, never the account secret.
+        assertArrayEquals(
+            byteArrayOf(0) + account.encryption.contentPublicKey,
+            decryptBox(decodeBase64(response), terminal.secretKey),
+        )
         assertEquals(1, graph.accountStore.registry.value.entries.size)
         rule.onNodeWithTag(HomeTags.SETTINGS).assertExists()
     }

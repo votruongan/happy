@@ -8,6 +8,7 @@ import com.slopus.happy.crypto.SecureRandomSource
 import com.slopus.happy.crypto.Sodium
 import com.slopus.happy.crypto.decodeBase64
 import com.slopus.happy.crypto.encryptBox
+import com.slopus.happy.net.HttpStatusException
 import kotlinx.coroutines.delay
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
@@ -83,19 +84,23 @@ suspend fun approveAccountLink(
     api.approveAccountLink(credentials.token, publicKey, response)
 }
 
-/** The prefix of the link a terminal (the CLI or Happy Desktop) shows as a QR code. */
-const val TERMINAL_URL_PREFIX = "happy://terminal?"
+/**
+ * The terminal's pairing request already has an answer that this phone did
+ * not send (status `authorized`, or 409 from the server). Someone else may
+ * have connected the terminal, so it is a warning, not success.
+ */
+class TerminalAlreadyAnsweredException : IllegalStateException("Terminal auth request was already answered")
 
 /**
  * Connecting a terminal (useConnectTerminal.ts processAuthUrl with
  * authApprove.ts). The terminal waits with a box key pair; this phone seals
- * two answers to it: v1 is the account secret, v2 is `0x00 || the content
- * public key` (`sync.encryption.contentDataKey`), which lets a v2 terminal
- * work without the secret. The server says which one the terminal takes. A
- * request that is already answered or gone needs nothing, and counts as done.
+ * the reply its link asks for ([TerminalLink.reply]) to it. The reply never
+ * holds the account secret, and the server's `supportsV2` flag is not read,
+ * so nothing the server says changes what is sent.
  *
- * Throws [InvalidLinkException] when [url] is not a terminal link, and any
- * other exception when the key is malformed or a request fails.
+ * Throws [InvalidLinkException] when [url] is not a valid terminal link,
+ * [TerminalAlreadyAnsweredException] when the request already has another
+ * answer, and any other exception when the request is gone or fails.
  */
 suspend fun approveTerminal(
     api: AuthApi,
@@ -104,12 +109,18 @@ suspend fun approveTerminal(
     url: String,
     random: RandomSource = SecureRandomSource,
 ) {
-    if (!url.startsWith(TERMINAL_URL_PREFIX)) throw InvalidLinkException("Not a terminal link")
-    val publicKey = decodeBase64(url.substring(TERMINAL_URL_PREFIX.length), Base64Variant.Url)
-    val responseV1 = encryptBox(credentials.secretBytes(), publicKey, random)
-    val responseV2 = encryptBox(byteArrayOf(0) + encryption.contentPublicKey, publicKey, random)
-    val status = api.terminalAuthStatus(publicKey)
-    if (status.status == "pending") {
-        api.approveTerminal(credentials.token, publicKey, if (status.supportsV2) responseV2 else responseV1)
+    val link = parseTerminalLink(url) ?: throw InvalidLinkException("Not a terminal link")
+    val response = encryptBox(link.reply(encryption.contentPublicKey), link.publicKey, random)
+    when (api.terminalAuthStatus(link.publicKey).status) {
+        "pending" -> Unit
+        "authorized" -> throw TerminalAlreadyAnsweredException()
+        else -> throw IllegalStateException("Terminal auth request not found")
+    }
+    try {
+        api.approveTerminal(credentials.token, link.publicKey, response)
+    } catch (e: HttpStatusException) {
+        // The server keeps only the first answer and turns any other away with 409.
+        if (e.status == 409) throw TerminalAlreadyAnsweredException()
+        throw e
     }
 }

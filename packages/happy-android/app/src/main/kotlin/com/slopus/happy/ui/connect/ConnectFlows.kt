@@ -17,15 +17,17 @@ import androidx.compose.ui.res.stringResource
 import com.slopus.happy.AppGraph
 import com.slopus.happy.R
 import com.slopus.happy.auth.AuthState
-import com.slopus.happy.auth.TERMINAL_URL_PREFIX
+import com.slopus.happy.auth.TerminalAlreadyAnsweredException
 import com.slopus.happy.auth.approveAccountLink
 import com.slopus.happy.auth.approveTerminal
+import com.slopus.happy.auth.parseTerminalLink
 import com.slopus.happy.crypto.AccountLink
 import com.slopus.happy.ui.components.Alert
 import com.slopus.happy.ui.components.AlertButton
 import com.slopus.happy.ui.components.HappyAlert
 import com.slopus.happy.ui.components.Prompt
 import com.slopus.happy.ui.components.PromptModal
+import com.slopus.happy.ui.components.confirm
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -57,6 +59,9 @@ class ConnectFlow internal constructor(
     /** Add's "Enter link manually" prompt is open. */
     var enteringLink by mutableStateOf(false)
     internal var process: suspend (String) -> Boolean = { false }
+
+    /** [process], after the person accepts the link when the flow asks first (terminals). */
+    internal var confirmAndProcess: suspend (String) -> Boolean = { process(it) }
     private var scanning = false
 
     /**
@@ -81,18 +86,18 @@ class ConnectFlow internal constructor(
     }
 
     /**
-     * A scanned code by kind: this flow's own is approved, a Protocol V2
-     * pairing code starts pairing, and anything else is an alert naming
-     * where it belongs.
+     * A scanned code by kind: this flow's own is approved, once the person
+     * accepts it where the flow asks first, a Protocol V2 pairing code
+     * starts pairing, and anything else is an alert naming where it belongs.
      */
     internal suspend fun route(text: String) {
         when (val code = HappyCode.classify(text)) {
             is HappyCode.AgentPairing -> connectAgent?.invoke(code.text)
                 ?: run { alert = errorAlert(messages.pairingUnavailable) }
             is HappyCode.Terminal ->
-                if (kind == ConnectKind.Terminal || kind == ConnectKind.Add) process(code.url) else alert = errorAlert(messages.terminalElsewhere)
+                if (kind == ConnectKind.Terminal || kind == ConnectKind.Add) confirmAndProcess(code.url) else alert = errorAlert(messages.terminalElsewhere)
             is HappyCode.Account -> when (kind) {
-                ConnectKind.Account -> process(code.url)
+                ConnectKind.Account -> confirmAndProcess(code.url)
                 ConnectKind.Add -> alert = errorAlert(messages.accountSignedOut)
                 else -> alert = errorAlert(messages.accountElsewhere)
             }
@@ -116,23 +121,36 @@ class ConnectFlow internal constructor(
         }
     }
 
-    /** processAuthUrl, awaited. True when the link was approved. */
+    /**
+     * processAuthUrl, awaited, without asking: only for a screen that already
+     * showed the request and got Accept. True when the link was approved.
+     */
     suspend fun processAuthUrl(url: String): Boolean = process(url)
 
     internal fun errorAlert(message: String) = Alert(errorTitle, message, listOf(AlertButton(okTitle)))
 }
 
 /** Which code a [ConnectFlow] approves itself. */
-enum class ConnectKind(val prefix: String) {
-    Terminal(TERMINAL_URL_PREFIX),
-    Account(AccountLink.URL_PREFIX),
+enum class ConnectKind {
+    Terminal,
+    Account,
 
     /**
      * Add, from the first screen or the account menu: a terminal code
      * creates an account that approves it, a pairing code pairs, an account
      * code says it needs a signed-in phone.
      */
-    Add(TERMINAL_URL_PREFIX),
+    Add;
+
+    /**
+     * A link this flow can approve: a terminal link that parses (either
+     * form, 32-byte keys), or an account link. Anything else is "Invalid
+     * authentication URL".
+     */
+    internal fun isValid(url: String): Boolean = when (this) {
+        Terminal, Add -> parseTerminalLink(url) != null
+        Account -> url.startsWith(AccountLink.URL_PREFIX)
+    }
 }
 
 /** What a scan that can't be approved here says. */
@@ -148,8 +166,11 @@ internal data class ScanMessages(
 
 /**
  * useConnectTerminal.ts: connects a terminal (the CLI or Happy Desktop) to
- * this account. Success is felt, not announced (a haptic, then [onSuccess]);
- * a failure is an alert unless [onError] reports it in the caller's own UI.
+ * this account. A scan or a pasted link asks the person to accept the
+ * request first. Success is felt, not announced (a haptic, then
+ * [onSuccess]); a failure is an alert unless [onError] reports it in the
+ * caller's own UI. A request someone else already answered is always a
+ * warning alert, and [onError] too.
  */
 @Composable
 fun rememberTerminalConnect(
@@ -176,16 +197,48 @@ fun rememberTerminalConnect(
     val currentOnSuccess by rememberUpdatedState(onSuccess)
     val currentOnError by rememberUpdatedState(onError)
     val failed = stringResource(R.string.modals_failed_to_connect_terminal)
-    return rememberConnectFlow(ConnectKind.Terminal, approve) { flow, error ->
-        if (error == null) {
-            haptics.performHapticFeedback(HapticFeedbackType.Confirm)
-            currentOnSuccess()
-        } else {
-            val handler = currentOnError
-            if (handler != null) handler() else flow.alert = flow.errorAlert(failed)
+    val alreadyConnected = alreadyConnectedAlert()
+    return rememberConnectFlow(ConnectKind.Terminal, terminalConfirmation(), approve) { flow, error ->
+        when {
+            error == null -> {
+                haptics.performHapticFeedback(HapticFeedbackType.Confirm)
+                currentOnSuccess()
+            }
+            error is TerminalAlreadyAnsweredException -> {
+                // A security warning, not an ordinary failure: always shown.
+                flow.alert = alreadyConnected
+                currentOnError?.invoke()
+            }
+            else -> {
+                val handler = currentOnError
+                if (handler != null) handler() else flow.alert = flow.errorAlert(failed)
+            }
         }
     }
 }
+
+/**
+ * Connect Terminal / Accept Connection / Reject: asked before any scanned or
+ * pasted terminal code is answered, since a code can come from anywhere.
+ */
+@Composable
+private fun terminalConfirmation() = Confirmation(
+    title = stringResource(R.string.terminal_connect_terminal),
+    message = stringResource(R.string.terminal_terminal_request_description),
+    accept = stringResource(R.string.terminal_accept_connection),
+    reject = stringResource(R.string.terminal_reject),
+)
+
+/**
+ * "Terminal already connected": the terminal's request already had an
+ * answer this phone did not send ([TerminalAlreadyAnsweredException]).
+ */
+@Composable
+private fun alreadyConnectedAlert(): Alert = Alert(
+    stringResource(R.string.terminal_already_connected_title),
+    stringResource(R.string.terminal_already_connected_message),
+    listOf(AlertButton(stringResource(R.string.common_ok))),
+)
 
 /**
  * useConnectAccount.ts: Settings › Account › Link New Device. Approves a
@@ -220,7 +273,7 @@ fun rememberAccountLink(
     val linked = stringResource(R.string.modals_device_linked_successfully)
     val ok = stringResource(R.string.common_ok)
     val failed = stringResource(R.string.modals_failed_to_link_device)
-    return rememberConnectFlow(ConnectKind.Account, approve) { flow, error ->
+    return rememberConnectFlow(ConnectKind.Account, confirmation = null, approve) { flow, error ->
         if (error == null) {
             flow.alert = Alert(successTitle, linked, listOf(AlertButton(ok) { currentOnSuccess() }))
         } else {
@@ -230,9 +283,18 @@ fun rememberAccountLink(
     }
 }
 
+/** The question a flow asks before it approves a scanned or pasted link (Modal.confirm). */
+private class Confirmation(val title: String, val message: String, val accept: String, val reject: String)
+
+/**
+ * A flow for [kind]'s links ([ConnectKind.isValid]; anything else is
+ * "Invalid authentication URL"). With a [confirmation], scans and pasted
+ * links wait for the person's Accept.
+ */
 @Composable
 private fun rememberConnectFlow(
     kind: ConnectKind,
+    confirmation: Confirmation?,
     approve: suspend (String) -> Unit,
     onResult: (flow: ConnectFlow, error: Throwable?) -> Unit,
 ): ConnectFlow {
@@ -256,9 +318,8 @@ private fun rememberConnectFlow(
     )
     flow.scanner = rememberQrScanner()
     flow.connectAgent = LocalAgentPairing.current
-    val prefix = kind.prefix
     flow.process = process@{ url ->
-        if (!url.startsWith(prefix)) {
+        if (!kind.isValid(url)) {
             flow.alert = flow.errorAlert(invalid)
             return@process false
         }
@@ -270,12 +331,28 @@ private fun rememberConnectFlow(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            Log.w("ConnectFlow", "Approving $prefix failed", e)
+            // Never the link itself: a terminal link carries its pairing secret.
+            Log.w("ConnectFlow", "Approving a $kind link failed", e)
             currentOnResult(flow, e)
             false
         } finally {
             flow.isLoading = false
         }
+    }
+    flow.confirmAndProcess = confirmAndProcess@{ url ->
+        if (confirmation == null) return@confirmAndProcess flow.process(url)
+        if (!kind.isValid(url)) {
+            flow.alert = flow.errorAlert(invalid)
+            return@confirmAndProcess false
+        }
+        val accepted = confirm(
+            show = { flow.alert = it },
+            title = confirmation.title,
+            message = confirmation.message,
+            confirmText = confirmation.accept,
+            cancelText = confirmation.reject,
+        )
+        accepted && flow.process(url)
     }
     flow.alert?.let { HappyAlert(it, onDismiss = { flow.alert = null }) }
     return flow
@@ -283,11 +360,13 @@ private fun rememberConnectFlow(
 
 /**
  * Add: the first screen's Connect and the account menu's Add
- * ([ConnectKind.Add]). A terminal code creates a Happy account and
- * approves the terminal with it in one step; the account is kept only if
- * the approval went through, and it opens. A pairing code pairs an agent.
- * Without a scanner, or from the first screen's menu, it asks for the link
- * instead ([ConnectFlow.enteringLink]). A failure is an alert.
+ * ([ConnectKind.Add]). A terminal code, once the person accepts it,
+ * creates a Happy account and approves the terminal with it in one step;
+ * the account is kept only if the approval went through, and it opens. A
+ * pairing code pairs an agent. Without a scanner, or from the first screen's menu, it
+ * asks for the link instead ([ConnectFlow.enteringLink]). A failure is an
+ * alert; a terminal someone else already answered is the "Terminal already
+ * connected" warning.
  */
 @Composable
 fun rememberAddFlow(graph: AppGraph): ConnectFlow = rememberAddConnect(
@@ -301,8 +380,13 @@ fun rememberAddFlow(graph: AppGraph): ConnectFlow = rememberAddConnect(
 fun rememberAddConnect(approve: suspend (url: String) -> Unit): ConnectFlow {
     val haptics = LocalHapticFeedback.current
     val failed = stringResource(R.string.modals_failed_to_connect_terminal)
-    val flow = rememberConnectFlow(ConnectKind.Add, approve) { flow, error ->
-        if (error == null) haptics.performHapticFeedback(HapticFeedbackType.Confirm) else flow.alert = flow.errorAlert(failed)
+    val alreadyConnected = alreadyConnectedAlert()
+    val flow = rememberConnectFlow(ConnectKind.Add, terminalConfirmation(), approve) { flow, error ->
+        when {
+            error == null -> haptics.performHapticFeedback(HapticFeedbackType.Confirm)
+            error is TerminalAlreadyAnsweredException -> flow.alert = alreadyConnected
+            else -> flow.alert = flow.errorAlert(failed)
+        }
     }
     flow.onUnavailable = { flow.enteringLink = true }
     if (flow.enteringLink) {
@@ -334,7 +418,7 @@ fun EnterTerminalUrlPrompt(flow: ConnectFlow, onDismiss: () -> Unit) {
         prompt = Prompt(
             title = stringResource(R.string.modals_authenticate_terminal),
             message = stringResource(R.string.modals_paste_url_from_terminal),
-            placeholder = "happy://terminal?...",
+            placeholder = "happy://pair/terminal?...",
             confirmText = stringResource(R.string.common_authenticate),
             onResult = { url -> url?.trim()?.takeIf { it.isNotEmpty() }?.let(flow::connectWithUrl) },
         ),
