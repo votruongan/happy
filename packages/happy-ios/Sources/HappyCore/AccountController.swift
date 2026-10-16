@@ -381,9 +381,10 @@ public final class AccountController {
     /// makes one: the account is made on the server chosen, handed to the
     /// computer, and only once the computer has it kept here and made the
     /// active one (`signIn`). Anything short of that, a code already used
-    /// included, keeps nothing: the accounts here and the active one stay
-    /// as they were.
-    public func addAccount(approvingTerminal publicKey: Data) async throws -> PairingOutcome {
+    /// (`LegacyPairingError`) included, keeps nothing: the accounts here
+    /// and the active one stay as they were. `pairingSecret` is a current
+    /// CLI's (`happy://pair/terminal?`), and goes back in the reply.
+    public func addAccount(approvingTerminal publicKey: Data, pairingSecret: Data? = nil) async throws -> PairingOutcome {
         let wasAdding = isAddingAccount
         isAddingAccount = true
         var kept = false
@@ -391,7 +392,8 @@ public final class AccountController {
         let credentials = try await authService.createAccount()
         guard let secret = credentials.secretData else { throw CryptoError.invalidInput("credentials secret") }
         let api = HappyAPI(serverURL: serverConfig.serverURL, clientID: clientID, transport: transport, token: credentials.token)
-        let outcome = try await LegacyPairingService(api: api, keys: AccountKeys(secret: secret)).approve(.terminal(publicKey: publicKey))
+        let link = LegacyPairingLink.terminalLink(publicKey: publicKey, pairingSecret: pairingSecret)
+        let outcome = try await LegacyPairingService(api: api, keys: AccountKeys(secret: secret)).approve(link)
         guard outcome == .terminalConnected else { return outcome }
         try await signIn(credentials, origin: .madeForComputer)
         kept = true

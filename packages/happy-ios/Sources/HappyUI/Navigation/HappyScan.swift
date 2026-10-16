@@ -6,7 +6,8 @@ import UIKit
 
 /// Every scan in the app: the camera reads any code, and whatever it read
 /// goes where `ScanRoute` sends it. A code that can't be used says why; none
-/// is ignored.
+/// is ignored. A computer's relay code, scanned, pasted or opened as a
+/// link, is answered only once the person accepts it.
 @MainActor
 enum HappyScan {
     enum Result: Equatable {
@@ -65,14 +66,24 @@ enum HappyScan {
         case .connectAgent:
             PairingFlow.openIfAgentPairing(text, context: context, on: controller, start: start)
             return .pairing
-        case .connectComputer(let key):
+        case .connectComputer, .newAccountForComputer:
+            guard let link = route.terminalLink else { return .ended }
+            // Answering hands the computer an account, and a code can come
+            // from anywhere: ask first, as happy-app does
+            // (useConnectTerminal.ts confirmAndProcessAuthUrl).
+            guard await LegacyPairingFlow.confirm(.terminal, on: controller) else {
+                log.debug("terminal request rejected")
+                PairingAnalytics.shared.log(.cancelled(method: .relay, start: start))
+                return .ended
+            }
+            if case .newAccountForComputer = route {
+                return await newAccount(for: link, context: context, start: start, on: controller, busy: busy)
+            }
             guard let session = context.account.session else { return .ended }
-            return await approve(.terminal(publicKey: key), session: session, start: start, on: controller, busy: busy)
+            return await approve(link, session: session, start: start, on: controller, busy: busy)
         case .linkDevice(let key):
             guard let session = context.account.session else { return .ended }
             return await approve(.account(publicKey: key), session: session, start: start, on: controller, busy: busy)
-        case .newAccountForComputer(let key):
-            return await newAccount(for: key, context: context, start: start, on: controller, busy: busy)
         case .problem(let problem):
             PairingAnalytics.shared.log(.failed(method: problem.isAgentConnection ? .agentConnection : .relay, start: start))
             report(problem, on: controller)
@@ -80,6 +91,8 @@ enum HappyScan {
         }
     }
 
+    /// Answers a code the person has accepted, or one that needs no
+    /// question (another device's, scanned here).
     private static func approve(
         _ link: LegacyPairingLink,
         session: AccountSession,
@@ -87,7 +100,7 @@ enum HappyScan {
         on controller: UIViewController,
         busy: (Bool) -> Void
     ) async -> Result {
-        let kind: LegacyPairingFlow.Kind = if case .account = link { .account } else { .terminal }
+        let kind: LegacyPairingFlow.Kind = link.isTerminal ? .terminal : .account
         busy(true)
         let outcome = await LegacyPairingFlow.approve(link, session: session)
         busy(false)
@@ -102,14 +115,15 @@ enum HappyScan {
         return kind == .account ? .deviceLinked : .computerConnected
     }
 
-    /// A new account for the computer, made without asking, as happy-app's
-    /// first run makes one (`AccountController.addAccount`), always: beside
-    /// a Happy account or an agent connection too, since there can be many.
-    /// Kept and made active only once the computer has it, so the window's
-    /// screens become its home then, and the success shows over them; a
-    /// used code or a failure keeps nothing and says so.
+    /// A new account for the computer the person accepted, made without
+    /// asking more, as happy-app's first run makes one
+    /// (`AccountController.addAccount`), always: beside a Happy account or
+    /// an agent connection too, since there can be many. Kept and made
+    /// active only once the computer has it, so the window's screens become
+    /// its home then, and the success shows over them; a used code or a
+    /// failure keeps nothing and says so.
     private static func newAccount(
-        for key: Data,
+        for link: LegacyPairingLink,
         context: AppContext,
         start: PairingStart,
         on controller: UIViewController,
@@ -121,12 +135,13 @@ enum HappyScan {
         busy(true)
         let outcome: LegacyPairingFlow.Outcome
         do {
-            outcome = try await context.account.addAccount(approvingTerminal: key) == .alreadyHandled ? .alreadyHandled : .approved
-        } catch LegacyPairingError.terminalNeedsUpdate {
-            outcome = .terminalNeedsUpdate
+            _ = try await context.account.addAccount(approvingTerminal: link.publicKey, pairingSecret: link.pairingSecret)
+            outcome = .approved
         } catch {
-            log.error("adding an account for a computer failed: \(String(describing: type(of: error)), privacy: .public)")
-            outcome = .failed
+            outcome = LegacyPairingFlow.outcome(of: error)
+            if outcome == .failed {
+                log.error("adding an account for a computer failed: \(String(describing: type(of: error)), privacy: .public)")
+            }
         }
         busy(false)
         PairingAnalytics.shared.log(outcome == .approved ? .completed(method: .relay, start: start) : .failed(method: .relay, start: start))

@@ -238,8 +238,9 @@ final class LegacyTerminalCodeTests: XCTestCase {
         XCTAssertEqual(try JSONDecoder().decode(AccountRegistryEntry.self, from: JSONEncoder().encode(made)).origin, .madeForComputer)
     }
 
-    /// A code already answered keeps nothing and changes nothing: the alert
-    /// says so (`alreadyHandled`), and no stray account is left behind.
+    /// A code already answered keeps nothing and changes nothing: the
+    /// "Terminal already connected" warning says so
+    /// (`terminalAlreadyConnected`), and no stray account is left behind.
     func testAUsedCodeAddsNothing() async throws {
         let computer = try terminal()
         let relay = Relay(terminal: computer.publicKey)
@@ -247,8 +248,34 @@ final class LegacyTerminalCodeTests: XCTestCase {
         await account.restore()
         try await scan(computer, into: account, relay: relay)
         let before = account.accounts
-        let outcome = try await account.addAccount(approvingTerminal: computer.publicKey)
-        XCTAssertEqual(outcome, .alreadyHandled)
+        do {
+            _ = try await account.addAccount(approvingTerminal: computer.publicKey)
+            XCTFail("a used code went through")
+        } catch {
+            XCTAssertEqual(error as? LegacyPairingError, .terminalAlreadyConnected)
+        }
         XCTAssertEqual(account.accounts, before)
+    }
+
+    /// A current CLI's `happy://pair/terminal?` code: the new account's
+    /// content key goes back with the code's pairing secret, never the
+    /// account's secret.
+    func testAV3CodeGetsTheReplyWithItsPairingSecret() async throws {
+        let computer = try terminal()
+        let secret = Data((0..<32).map { UInt8(255 - $0) })
+        let relay = Relay(terminal: computer.publicKey)
+        let account = try controller(relay)
+        await account.restore()
+        let code = HappyCode(LegacyPairingLink.terminalV3(publicKey: computer.publicKey, pairingSecret: secret).urlString)
+        let route = ScanRoute.route(code, intent: .addAccount, hasAccount: false)
+        XCTAssertEqual(route, .newAccountForComputer(publicKey: computer.publicKey, pairingSecret: secret))
+
+        let outcome = try await account.addAccount(approvingTerminal: computer.publicKey, pairingSecret: secret)
+        XCTAssertEqual(outcome, .terminalConnected)
+        let session = try XCTUnwrap(account.session)
+        let answer = try XCTUnwrap(relay.answer(for: computer.publicKey))
+        let opened = try XCTUnwrap(Box.openAnonymous(answer.response, recipientSecretKey: computer.secretKey))
+        XCTAssertEqual(opened, Data([3]) + session.keys.contentKeyPair.publicKey + secret)
+        XCTAssertNil(opened.range(of: session.keys.secret), "the master secret must not reach a terminal")
     }
 }

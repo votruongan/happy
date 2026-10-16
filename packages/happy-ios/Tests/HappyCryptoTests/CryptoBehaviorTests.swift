@@ -79,6 +79,18 @@ final class CryptoBehaviorTests: XCTestCase {
         XCTAssertFalse(opened.range(of: account.secret) != nil, "the master secret must not reach a terminal")
     }
 
+    func testV3TerminalApprovalCarriesTheContentPublicKeyAndThePairingSecret() throws {
+        let account = try AccountKeys(secret: SystemRandom().bytes(32))
+        let terminal = try BoxKeyPair.generate()
+        let pairingSecret = SystemRandom().bytes(32)
+        let response = try account.terminalApproval(terminalPublicKey: terminal.publicKey, pairingSecret: pairingSecret)
+
+        let opened = try XCTUnwrap(Box.openAnonymous(response, recipientSecretKey: terminal.secretKey))
+        XCTAssertEqual(opened, Data([3]) + account.contentKeyPair.publicKey + pairingSecret)
+        XCTAssertNil(opened.range(of: account.secret), "the master secret must not reach a terminal")
+        XCTAssertThrowsError(try account.terminalApproval(terminalPublicKey: terminal.publicKey, pairingSecret: Data(count: 31)))
+    }
+
     func testAccountLinkHandsOverTheSecretToTheRequester() throws {
         let account = try AccountKeys(secret: SystemRandom().bytes(32))
         // The new device makes its key pair with crypto_box_seed_keypair.

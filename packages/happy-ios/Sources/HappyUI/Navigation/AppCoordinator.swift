@@ -5,7 +5,7 @@ import HappyWire
 import UIKit
 
 /// Owns the window's navigation stack and swaps its root when the account
-/// signs in or out. Deep links (`happy://terminal?…`) land here too.
+/// signs in or out. Deep links (`happy://pair/terminal?…`, `happy://terminal?…`) land here too.
 @MainActor
 public final class AppCoordinator {
     public let window: UIWindow
@@ -163,8 +163,9 @@ public final class AppCoordinator {
     /// Opens a Happy link from outside the app, routed as a scanned code
     /// is (`HappyScan`). One that arrives before the stored accounts are
     /// read waits for them. A relay link asks first: a link can come from
-    /// anywhere, and answering it hands a computer an account; an agent's
-    /// link asks through its pairing screen.
+    /// anywhere, and answering it hands a computer or a device an account.
+    /// A computer's link asks in `HappyScan` (Connect Terminal, as every
+    /// scan of one does); an agent's link asks through its pairing screen.
     @discardableResult
     public func open(_ url: URL) -> Bool {
         let text = url.absoluteString
@@ -180,15 +181,9 @@ public final class AppCoordinator {
         let route = ScanRoute.route(HappyCode(text), intent: .connect, hasAccount: context.account.session != nil, canShareAccount: context.account.sessionIsLegacy)
         Task { @MainActor in
             switch route {
-            case .connectComputer, .newAccountForComputer, .linkDevice:
-                let terminal = if case .linkDevice = route { false } else { true }
-                guard await Alerts.confirm(
-                    terminal ? Strings.Modals.authenticateTerminal : Strings.SettingsAccount.linkNewDevice,
-                    nil,
-                    confirmTitle: Strings.Common.continueAction,
-                    on: top
-                ) else { return }
-            case .connectAgent, .problem:
+            case .linkDevice:
+                guard await LegacyPairingFlow.confirm(.account, on: top) else { return }
+            case .connectComputer, .newAccountForComputer, .connectAgent, .problem:
                 break
             }
             await HappyScan.open(text, intent: .connect, context: context, on: top, start: .openedLink)

@@ -23,8 +23,9 @@ public final class AppContext {
     }
 }
 
-/// Scanning and answering pairing codes: connecting a terminal
+/// Asking about and answering relay pairing codes: connecting a terminal
 /// (useConnectTerminal.ts) and linking another device (useConnectAccount.ts).
+/// `HappyScan` reads and routes every code; this asks and answers.
 @MainActor
 enum LegacyPairingFlow {
     enum Kind {
@@ -34,54 +35,76 @@ enum LegacyPairingFlow {
 
     enum Outcome: Equatable {
         case approved
-        /// The code was answered already, or has expired: nothing was sent.
-        case alreadyHandled
+        /// No such request: it was used already, or has expired. Nothing
+        /// was sent.
+        case notFound
         /// Not a pairing link of the expected kind.
         case invalidLink
         /// A terminal that only speaks auth v1.
         case terminalNeedsUpdate
+        /// The terminal's request was already answered, not by this app:
+        /// someone else may have connected it.
+        case terminalAlreadyConnected
         case failed
     }
 
-    /// Approves a scanned or pasted link of the expected kind.
-    static func approve(_ text: String, expecting kind: Kind, session: AccountSession) async -> Outcome {
-        guard let link = LegacyPairingLink(text.trimmingCharacters(in: .whitespacesAndNewlines)) else {
-            return .invalidLink
+    /// Asks the person before a scanned, pasted or opened code is answered
+    /// (useConnectTerminal.ts confirmAndProcessAuthUrl): a code can come
+    /// from anywhere, and answering a terminal's hands it the account.
+    /// True when they accept.
+    static func confirm(_ kind: Kind, on controller: UIViewController) async -> Bool {
+        switch kind {
+        case .terminal:
+            await Alerts.confirm(
+                Strings.Terminal.connectTerminal,
+                Strings.Terminal.terminalRequestDescription,
+                confirmTitle: Strings.Terminal.acceptConnection,
+                cancelTitle: Strings.Terminal.reject,
+                on: controller
+            )
+        case .account:
+            await Alerts.confirm(Strings.SettingsAccount.linkNewDevice, nil, confirmTitle: Strings.Common.continueAction, on: controller)
         }
-        switch (link, kind) {
-        case (.terminal, .terminal), (.account, .account):
-            break
-        default:
-            return .invalidLink
-        }
-        return await approve(link, session: session)
     }
 
+    /// Answers `link`. A terminal's is answered only once the person
+    /// accepted it (`confirm`, which `HappyScan.open` asks).
     static func approve(_ link: LegacyPairingLink, session: AccountSession) async -> Outcome {
         do {
-            return try await session.pairing.approve(link) == .alreadyHandled ? .alreadyHandled : .approved
-        } catch LegacyPairingError.terminalNeedsUpdate {
-            return .terminalNeedsUpdate
+            _ = try await session.pairing.approve(link)
+            return .approved
         } catch {
-            return .failed
+            return outcome(of: error)
+        }
+    }
+
+    /// What an approval that threw tells the person.
+    static func outcome(of error: Error) -> Outcome {
+        switch error as? LegacyPairingError {
+        case .terminalNeedsUpdate: .terminalNeedsUpdate
+        case .terminalAlreadyConnected: .terminalAlreadyConnected
+        case .terminalNotFound: .notFound
+        case nil: .failed
         }
     }
 
     /// What happy-app tells the person. A connected terminal is felt, not
     /// announced: the computer turns up on screen. A linked device and every
-    /// failure get an alert.
+    /// failure get an alert; an answered request gets the warning.
     static func report(_ outcome: Outcome, kind: Kind, on controller: UIViewController) {
         switch (outcome, kind) {
         case (.approved, .terminal):
             UINotificationFeedbackGenerator().notificationOccurred(.success)
         case (.approved, .account):
             Alerts.show(Strings.Common.success, Strings.Modals.deviceLinkedSuccessfully, on: controller)
-        case (.alreadyHandled, _):
+        case (.notFound, _):
             Alerts.show(Strings.Scan.alreadyUsedTitle, Strings.Scan.alreadyUsed, on: controller)
         case (.invalidLink, _):
             Alerts.show(Strings.Common.error, Strings.Modals.invalidAuthUrl, on: controller)
         case (.terminalNeedsUpdate, _):
             Alerts.show(Strings.Common.error, Strings.Modals.terminalNeedsUpdate, on: controller)
+        case (.terminalAlreadyConnected, _):
+            Alerts.show(Strings.Terminal.alreadyConnectedTitle, Strings.Terminal.alreadyConnectedMessage, on: controller)
         case (.failed, .terminal):
             Alerts.show(Strings.Common.error, Strings.Modals.failedToConnectTerminal, on: controller)
         case (.failed, .account):
