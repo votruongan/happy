@@ -172,7 +172,7 @@ export function EmptyMainScreen({
             t('modals.authenticateTerminal'),
             t('modals.pasteUrlFromTerminal'),
             {
-                placeholder: 'happy://terminal?...',
+                placeholder: 'happy://pair/terminal?...',
                 cancelText: t('common.cancel'),
                 confirmText: t('common.authenticate'),
             },

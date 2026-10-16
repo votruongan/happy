@@ -838,6 +838,8 @@ export const ca: TranslationStructure = {
         clientSideProcessing: 'Processament del costat del client',
         linkProcessedLocally: 'Enllaç processat localment al navegador',
         linkProcessedOnDevice: 'Enllaç processat localment al dispositiu',
+        alreadyConnectedTitle: 'El terminal ja està connectat',
+        alreadyConnectedMessage: 'És possible que algú altre hagi connectat aquest terminal abans que tu. No l\'utilitzis. A l\'ordinador, executa `happy auth logout` i després `happy auth login`, i escaneja el codi nou.',
     },
 
     modals: {

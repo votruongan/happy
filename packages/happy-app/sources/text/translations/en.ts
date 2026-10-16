@@ -856,6 +856,8 @@ export const en: TranslationStructure = {
         clientSideProcessing: 'Client-Side Processing',
         linkProcessedLocally: 'Link processed locally in browser',
         linkProcessedOnDevice: 'Link processed locally on device',
+        alreadyConnectedTitle: 'Terminal already connected',
+        alreadyConnectedMessage: 'Someone else may have connected this terminal before you. Do not use it. On your computer, run `happy auth logout`, then `happy auth login` and scan the new code.',
     },
 
     modals: {
