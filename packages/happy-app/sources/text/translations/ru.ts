@@ -868,7 +868,15 @@ export const ru: TranslationStructure = {
         failedToConnectTerminal: 'Не удалось подключить терминал',
         cameraPermissionsRequiredToConnectTerminal: 'Для подключения терминала требуется доступ к камере',
         failedToLinkDevice: 'Не удалось связать устройство',
-        cameraPermissionsRequiredToScanQr: 'Для сканирования QR-кодов требуется доступ к камере'
+        cameraPermissionsRequiredToScanQr: 'Для сканирования QR-кодов требуется доступ к камере',
+        linkDeviceConfirmTitle: 'Привязать новое устройство?',
+        linkDeviceConfirmMessage: 'Это даёт полный доступ к вашему аккаунту. Новое устройство сможет читать все ваши сессии и действовать от вашего имени. Продолжайте, только если этот код показан на устройстве, которое вы сами настраиваете прямо сейчас.',
+        linkDeviceConfirmButton: 'Привязать устройство',
+        linkDeviceOutdated: 'Этот код из старой версии Happy. Обновите Happy на новом устройстве и отсканируйте снова или восстановите его секретным ключом.',
+        linkDeviceAlreadyAnsweredTitle: 'На запрос уже ответили',
+        linkDeviceAlreadyAnsweredMessage: 'Кто-то другой ответил на этот запрос привязки раньше вас. Возможно, новое устройство теперь вошло в другой аккаунт. Не используйте его: выйдите из аккаунта на нём и привяжите его снова.',
+        accountLinkRejectedTitle: 'Вход не выполнен',
+        accountLinkRejectedMessage: 'Ответ пришёл не с вашего другого телефона. Возможно, ваш сервер или сеть вмешиваются в привязку. Ничего не сохранено.'
     },
 
     navigation: {

@@ -899,7 +899,15 @@ export const en = {
         failedToConnectTerminal: 'Failed to connect terminal',
         cameraPermissionsRequiredToConnectTerminal: 'Camera permissions are required to connect terminal',
         failedToLinkDevice: 'Failed to link device',
-        cameraPermissionsRequiredToScanQr: 'Camera permissions are required to scan QR codes'
+        cameraPermissionsRequiredToScanQr: 'Camera permissions are required to scan QR codes',
+        linkDeviceConfirmTitle: 'Link a new device?',
+        linkDeviceConfirmMessage: 'This gives full access to your account. The new device can read all your sessions and act as you. Continue only if this code is on a device that you are setting up yourself, now.',
+        linkDeviceConfirmButton: 'Link Device',
+        linkDeviceOutdated: 'This code is from an older version of Happy. Update Happy on the new device and scan again, or restore it with your secret key.',
+        linkDeviceAlreadyAnsweredTitle: 'Link request already answered',
+        linkDeviceAlreadyAnsweredMessage: 'Someone else answered this link request before you. The new device may now be signed in to another account. Do not use it: log out on it, then link it again.',
+        accountLinkRejectedTitle: 'Not signed in',
+        accountLinkRejectedMessage: 'The reply did not come from your other phone. Your server or network may be tampering with the link. Nothing was saved.'
     },
 
     navigation: {
@@ -977,6 +985,7 @@ export const en = {
         restoreScan: 'Scan this code with your other phone.',
         restoreScanPath: 'Happy › Settings › Account › Link New Device',
         restoreUseKey: 'Use a secret key instead',
+        restoreScanRenewed: 'This is a new code. If scanning does nothing, update Happy on your other phone, or use a secret key instead.',
         secretKeyTitle: 'Secret Key',
         secretKeyBody: 'Paste your secret key. It is in Happy › Settings › Account on your other device.',
         restoreButton: 'Restore',
