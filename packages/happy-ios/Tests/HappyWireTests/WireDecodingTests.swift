@@ -148,5 +148,34 @@ final class PairingLinkTests: XCTestCase {
         XCTAssertNil(PairingLink("happy://terminal?"))
         XCTAssertNil(PairingLink("happy://terminal?AAAA"), "not 32 bytes")
         XCTAssertNil(PairingLink("happy://terminal?!!!"))
+        XCTAssertNil(PairingLink("happy://terminal?\(PairingLink.terminal(publicKey: key).urlString.dropFirst(PairingLink.terminalPrefix.count))&x=1"))
+    }
+
+    func testParsesV3TerminalLinksWithTheirPairingSecret() throws {
+        let secret = Data((0..<32).map { UInt8(200 - $0) })
+        let v3 = PairingLink.terminalV3(publicKey: key, pairingSecret: secret)
+        XCTAssertTrue(v3.urlString.hasPrefix("happy://pair/terminal?key="))
+        XCTAssertEqual(PairingLink(v3.urlString), v3)
+        XCTAssertEqual(v3.publicKey, key)
+        XCTAssertTrue(v3.isTerminal)
+        XCTAssertFalse(PairingLink.account(publicKey: key).isTerminal)
+
+        let pk = PairingLink.terminal(publicKey: key).urlString.dropFirst(PairingLink.terminalPrefix.count)
+        let ps = PairingLink.terminal(publicKey: secret).urlString.dropFirst(PairingLink.terminalPrefix.count)
+        XCTAssertEqual(PairingLink("happy://pair/terminal?s=\(ps)&key=\(pk)"), v3, "any parameter order")
+        XCTAssertEqual(PairingLink("happy://pair/terminal?key=\(pk)=&s=\(ps)="), v3, "padded")
+        XCTAssertTrue(PairingLink.hasTerminalPrefix(v3.urlString))
+        XCTAssertTrue(PairingLink.hasTerminalPrefix("happy://terminal?\(pk)"))
+        XCTAssertFalse(PairingLink.hasTerminalPrefix(PairingLink.account(publicKey: key).urlString))
+        XCTAssertFalse(String(describing: v3).contains(String(ps)), "the secret stays out of logs")
+    }
+
+    func testAV3LinkWithoutAValidSecretIsInvalidNotLegacy() {
+        let pk = PairingLink.terminal(publicKey: key).urlString.dropFirst(PairingLink.terminalPrefix.count)
+        XCTAssertNil(PairingLink("happy://pair/terminal?key=\(pk)"))
+        XCTAssertNil(PairingLink("happy://pair/terminal?key=\(pk)&s="))
+        XCTAssertNil(PairingLink("happy://pair/terminal?key=\(pk)&s=AAAA"), "not 32 bytes")
+        XCTAssertNil(PairingLink("happy://pair/terminal?key=AAAA&s=\(pk)"), "not 32 bytes")
+        XCTAssertNil(PairingLink("happy://pair/terminal?\(pk)"))
     }
 }

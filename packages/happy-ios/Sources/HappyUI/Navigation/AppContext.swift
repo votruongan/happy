@@ -31,11 +31,17 @@ enum PairingFlow {
         case terminal
         case account
 
-        var prefix: String {
+        /// The codes a scan of this kind keeps: either terminal link form,
+        /// or the account link.
+        func accepts(_ text: String) -> Bool {
             switch self {
-            case .terminal: PairingLink.terminalPrefix
-            case .account: PairingLink.accountPrefix
+            case .terminal: PairingLink.hasTerminalPrefix(text)
+            case .account: text.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix(PairingLink.accountPrefix)
             }
+        }
+
+        func matches(_ link: PairingLink) -> Bool {
+            link.isTerminal == (self == .terminal)
         }
     }
 
@@ -45,6 +51,8 @@ enum PairingFlow {
         case invalidLink
         /// A terminal that only speaks auth v1.
         case terminalNeedsUpdate
+        /// The terminal's request was already answered by someone else.
+        case terminalAlreadyConnected
         case failed
     }
 
@@ -54,21 +62,40 @@ enum PairingFlow {
     static func scan(_ kind: Kind, from controller: UIViewController) async -> String? {
         await withCheckedContinuation { continuation in
             let scanner = QRScannerViewController()
-            scanner.accepts = { $0.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix(kind.prefix) }
+            scanner.accepts = { kind.accepts($0) }
             scanner.onFinish = { continuation.resume(returning: $0) }
             controller.present(scanner, animated: true)
         }
     }
 
-    /// Approves a scanned or pasted link of the expected kind.
-    static func approve(_ text: String, expecting kind: Kind, session: AccountSession) async -> Outcome {
-        guard let link = PairingLink(text.trimmingCharacters(in: .whitespacesAndNewlines)) else {
-            return .invalidLink
+    /// Asks the person before a scanned, pasted or opened link is answered
+    /// (useConnectTerminal.ts confirmAndProcessAuthUrl, AppCoordinator.open):
+    /// a link can come from anywhere. True when they accept. A link that is
+    /// not a valid one of `kind` gets the invalid-link alert instead, and
+    /// false.
+    static func confirm(_ text: String, kind: Kind, on controller: UIViewController) async -> Bool {
+        guard let link = PairingLink(text), kind.matches(link) else {
+            report(.invalidLink, kind: kind, on: controller)
+            return false
         }
-        switch (link, kind) {
-        case (.terminal, .terminal), (.account, .account):
-            break
-        default:
+        switch kind {
+        case .terminal:
+            return await Alerts.confirm(
+                Strings.Terminal.connectTerminal,
+                Strings.Terminal.terminalRequestDescription,
+                confirmTitle: Strings.Terminal.acceptConnection,
+                cancelTitle: Strings.Terminal.reject,
+                on: controller
+            )
+        case .account:
+            return await Alerts.confirm(Strings.SettingsAccount.linkNewDevice, nil, confirmTitle: Strings.Common.continueAction, on: controller)
+        }
+    }
+
+    /// Approves a scanned or pasted link of the expected kind. Callers ask
+    /// with `confirm` first, unless the screen itself already asked.
+    static func approve(_ text: String, expecting kind: Kind, session: AccountSession) async -> Outcome {
+        guard let link = PairingLink(text), kind.matches(link) else {
             return .invalidLink
         }
         do {
@@ -76,6 +103,8 @@ enum PairingFlow {
             return .approved
         } catch PairingError.terminalNeedsUpdate {
             return .terminalNeedsUpdate
+        } catch PairingError.terminalAlreadyConnected {
+            return .terminalAlreadyConnected
         } catch {
             return .failed
         }
@@ -94,6 +123,8 @@ enum PairingFlow {
             Alerts.show(Strings.Common.error, Strings.Modals.invalidAuthUrl, on: controller)
         case (.terminalNeedsUpdate, _):
             Alerts.show(Strings.Common.error, Strings.Modals.terminalNeedsUpdate, on: controller)
+        case (.terminalAlreadyConnected, _):
+            Alerts.show(Strings.Terminal.alreadyConnectedTitle, Strings.Terminal.alreadyConnectedMessage, on: controller)
         case (.failed, .terminal):
             Alerts.show(Strings.Common.error, Strings.Modals.failedToConnectTerminal, on: controller)
         case (.failed, .account):

@@ -427,7 +427,7 @@ final class LinkComputerViewController: UIViewController {
             let text = await Alerts.prompt(
                 Strings.Onboarding.pasteLinkTitle,
                 Strings.Onboarding.pasteLinkMessage,
-                placeholder: "happy://terminal?...",
+                placeholder: "happy://pair/terminal?...",
                 confirmTitle: Strings.Onboarding.pasteLinkConfirm,
                 on: self
             )
@@ -438,6 +438,8 @@ final class LinkComputerViewController: UIViewController {
 
     private func link(_ text: String) async {
         guard !busy else { return }
+        // A scanned or pasted request is answered only once the person accepts it.
+        guard await PairingFlow.confirm(text, kind: .terminal, on: self), !busy else { return }
         linking = true
         update()
         let outcome = await PairingFlow.approve(text, expecting: .terminal, session: session)
@@ -456,7 +458,7 @@ final class LinkComputerViewController: UIViewController {
         case .failed:
             content.error = Strings.Onboarding.linkFailed
             UIAccessibility.post(notification: .announcement, argument: Strings.Onboarding.linkFailed)
-        case .invalidLink, .terminalNeedsUpdate:
+        case .invalidLink, .terminalNeedsUpdate, .terminalAlreadyConnected:
             // These need more than one line, and scanning again won't help.
             PairingFlow.report(outcome, kind: .terminal, on: self)
         }
@@ -536,6 +538,7 @@ final class OfflineChecklistViewController: UIViewController {
     private func scan() {
         Task { @MainActor in
             guard let text = await PairingFlow.scan(.terminal, from: self), !linking, !approved else { return }
+            guard await PairingFlow.confirm(text, kind: .terminal, on: self), !linking, !approved else { return }
             linking = true
             update()
             let outcome = await PairingFlow.approve(text, expecting: .terminal, session: session)

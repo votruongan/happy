@@ -213,7 +213,7 @@ public final class SettingsViewController: UIViewController {
             let text = await Alerts.prompt(
                 Strings.Modals.authenticateTerminal,
                 Strings.Modals.pasteUrlFromTerminal,
-                placeholder: "happy://terminal?...",
+                placeholder: "happy://pair/terminal?...",
                 confirmTitle: Strings.Common.authenticate,
                 on: self
             )
@@ -223,7 +223,11 @@ public final class SettingsViewController: UIViewController {
     }
 
     private func approve(_ text: String) async {
-        guard let session = context.account.session, !connectingTerminal else { return }
+        guard !connectingTerminal else { return }
+        // A scanned or pasted request is answered only once the person accepts it.
+        guard await PairingFlow.confirm(text, kind: .terminal, on: self),
+              let session = context.account.session, !connectingTerminal
+        else { return }
         connectingTerminal = true
         rebuild()
         let outcome = await PairingFlow.approve(text, expecting: .terminal, session: session)

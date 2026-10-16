@@ -56,11 +56,27 @@ public struct AccountKeys: Sendable {
 
     // MARK: Pairing responses
 
-    /// Answer to a terminal's `happy://terminal?` request, auth v2: the
-    /// terminal receives the content public key, never the master secret.
-    public func terminalApproval(terminalPublicKey: Data, random: RandomSource = SystemRandom()) throws -> Data {
-        var payload = Data([0])
-        payload.append(contentKeyPair.publicKey)
+    /// Answer to a terminal's pairing request. The terminal receives the
+    /// content public key, never the master secret:
+    ///
+    /// - a current CLI's `happy://pair/terminal?key=&s=` link (pass its
+    ///   `pairingSecret`): `0x03 || contentPublicKey || pairingSecret`, so the
+    ///   CLI can check that the reply came from the app that read its QR code;
+    /// - an older CLI's `happy://terminal?` link (no secret), auth v2:
+    ///   `0x00 || contentPublicKey`.
+    public func terminalApproval(terminalPublicKey: Data, pairingSecret: Data? = nil, random: RandomSource = SystemRandom()) throws -> Data {
+        var payload: Data
+        if let pairingSecret {
+            guard pairingSecret.count == 32 else {
+                throw CryptoError.invalidKeyLength(expected: 32, actual: pairingSecret.count)
+            }
+            payload = Data([0x03])
+            payload.append(contentKeyPair.publicKey)
+            payload.append(pairingSecret)
+        } else {
+            payload = Data([0x00])
+            payload.append(contentKeyPair.publicKey)
+        }
         return try Box.sealAnonymous(payload, recipientPublicKey: terminalPublicKey, random: random)
     }
 

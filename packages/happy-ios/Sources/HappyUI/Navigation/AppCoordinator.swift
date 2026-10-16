@@ -5,7 +5,7 @@ import HappyWire
 import UIKit
 
 /// Owns the window's navigation stack and swaps its root when the account
-/// signs in or out. Deep links (`happy://terminal?…`) land here too.
+/// signs in or out. Deep links (`happy://pair/terminal?…`, `happy://terminal?…`) land here too.
 @MainActor
 public final class AppCoordinator {
     public let window: UIWindow
@@ -158,15 +158,9 @@ public final class AppCoordinator {
             Alerts.show(Strings.Common.error, Strings.Modals.failedToConnectTerminal, on: top)
             return true
         }
-        let kind: PairingFlow.Kind
-        if case .terminal = link { kind = .terminal } else { kind = .account }
+        let kind: PairingFlow.Kind = link.isTerminal ? .terminal : .account
         Task { @MainActor in
-            let confirmed = await Alerts.confirm(
-                kind == .terminal ? Strings.Modals.authenticateTerminal : Strings.SettingsAccount.linkNewDevice,
-                nil,
-                confirmTitle: Strings.Common.continueAction,
-                on: top
-            )
+            let confirmed = await PairingFlow.confirm(text, kind: kind, on: top)
             guard confirmed, let session = context.account.session else { return }
             let outcome = await PairingFlow.approve(text, expecting: kind, session: session)
             PairingFlow.report(outcome, kind: kind, on: top)

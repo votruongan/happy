@@ -86,7 +86,27 @@ final class AuthServiceTests: XCTestCase {
 final class PairingServiceTests: XCTestCase {
     let keys = try! AccountKeys(secret: SystemRandom().bytes(32))
 
-    func testConnectsAV2TerminalWithTheContentPublicKey() async throws {
+    func testConnectsAV3TerminalWithTheContentPublicKeyAndItsPairingSecret() async throws {
+        let http = FakeHTTP()
+        let terminal = try BoxKeyPair.generate()
+        let pairingSecret = SystemRandom().bytes(32)
+        http.onRaw("GET /v1/auth/request/status", #"{"status":"pending","supportsV2":true}"#)
+        http.onRaw("POST /v1/auth/response", #"{"success":true}"#)
+
+        let link = PairingLink.terminalV3(publicKey: terminal.publicKey, pairingSecret: pairingSecret)
+        let outcome = try await PairingService(api: testAPI(http), keys: keys).approve(link)
+        XCTAssertEqual(outcome, .terminalConnected)
+
+        XCTAssertEqual(http.requests[0].query("publicKey"), terminal.publicKey.base64EncodedString())
+        let approval = try http.requests[1].jsonBody(AuthApproval.self)
+        XCTAssertEqual(approval.publicKey, terminal.publicKey.base64EncodedString())
+        let opened = try XCTUnwrap(Box.openAnonymous(Base64.decode(approval.response)!, recipientSecretKey: terminal.secretKey))
+        XCTAssertEqual(opened, Data([3]) + keys.contentKeyPair.publicKey + pairingSecret)
+        XCTAssertNil(opened.range(of: keys.secret), "the master secret must not reach a terminal")
+        XCTAssertEqual(http.requests[1].headers["Authorization"], "Bearer token-1")
+    }
+
+    func testConnectsAnOlderTerminalWithTheContentPublicKey() async throws {
         let http = FakeHTTP()
         let terminal = try BoxKeyPair.generate()
         http.onRaw("GET /v1/auth/request/status", #"{"status":"pending","supportsV2":true}"#)
@@ -95,28 +115,47 @@ final class PairingServiceTests: XCTestCase {
         let outcome = try await PairingService(api: testAPI(http), keys: keys).approve(.terminal(publicKey: terminal.publicKey))
         XCTAssertEqual(outcome, .terminalConnected)
 
-        XCTAssertEqual(http.requests[0].query("publicKey"), terminal.publicKey.base64EncodedString())
         let approval = try http.requests[1].jsonBody(AuthApproval.self)
-        XCTAssertEqual(approval.publicKey, terminal.publicKey.base64EncodedString())
         let opened = try XCTUnwrap(Box.openAnonymous(Base64.decode(approval.response)!, recipientSecretKey: terminal.secretKey))
         XCTAssertEqual(opened, Data([0]) + keys.contentKeyPair.publicKey)
-        XCTAssertEqual(http.requests[1].headers["Authorization"], "Bearer token-1")
     }
 
     func testRefusesV1TerminalsInsteadOfSendingTheSecret() async throws {
-        let http = FakeHTTP()
-        http.onRaw("GET /v1/auth/request/status", #"{"status":"pending","supportsV2":false}"#)
-        await XCTAssertThrowsAsync(try await PairingService(api: testAPI(http), keys: self.keys).approve(.terminal(publicKey: Data(count: 32)))) {
-            XCTAssertEqual($0 as? PairingError, .terminalNeedsUpdate)
+        for link in [PairingLink.terminal(publicKey: Data(count: 32)), .terminalV3(publicKey: Data(count: 32), pairingSecret: Data(count: 32))] {
+            let http = FakeHTTP()
+            http.onRaw("GET /v1/auth/request/status", #"{"status":"pending","supportsV2":false}"#)
+            await XCTAssertThrowsAsync(try await PairingService(api: testAPI(http), keys: self.keys).approve(link)) {
+                XCTAssertEqual($0 as? PairingError, .terminalNeedsUpdate)
+            }
+            XCTAssertTrue(http.requests("POST /v1/auth/response").isEmpty)
         }
-        XCTAssertTrue(http.requests("POST /v1/auth/response").isEmpty)
     }
 
-    func testAlreadyHandledRequestsSendNothing() async throws {
+    func testAnAnsweredRequestIsAWarningNotSuccess() async throws {
+        let http = FakeHTTP()
+        http.onRaw("GET /v1/auth/request/status", #"{"status":"authorized","supportsV2":false}"#)
+        await XCTAssertThrowsAsync(try await PairingService(api: testAPI(http), keys: self.keys).approve(.terminal(publicKey: Data(count: 32)))) {
+            XCTAssertEqual($0 as? PairingError, .terminalAlreadyConnected)
+        }
+        XCTAssertEqual(http.requests.count, 1)
+    }
+
+    func testAnAnswerTheServerTurnsAwayIsAWarning() async throws {
+        let http = FakeHTTP()
+        http.onRaw("GET /v1/auth/request/status", #"{"status":"pending","supportsV2":true}"#)
+        http.onRaw("POST /v1/auth/response", #"{"error":"already-answered"}"#, status: 409)
+        let link = PairingLink.terminalV3(publicKey: try BoxKeyPair.generate().publicKey, pairingSecret: Data(count: 32))
+        await XCTAssertThrowsAsync(try await PairingService(api: testAPI(http), keys: self.keys).approve(link)) {
+            XCTAssertEqual($0 as? PairingError, .terminalAlreadyConnected)
+        }
+    }
+
+    func testAnUnknownRequestIsAnError() async throws {
         let http = FakeHTTP()
         http.onRaw("GET /v1/auth/request/status", #"{"status":"not_found","supportsV2":false}"#)
-        let outcome = try await PairingService(api: testAPI(http), keys: keys).approve(.terminal(publicKey: Data(count: 32)))
-        XCTAssertEqual(outcome, .alreadyHandled)
+        await XCTAssertThrowsAsync(try await PairingService(api: testAPI(http), keys: self.keys).approve(.terminal(publicKey: Data(count: 32)))) {
+            XCTAssertEqual($0 as? PairingError, .terminalNotFound)
+        }
         XCTAssertEqual(http.requests.count, 1)
     }
 
