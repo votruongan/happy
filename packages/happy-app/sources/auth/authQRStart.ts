@@ -5,9 +5,14 @@ import { encodeBase64 } from '../encryption/base64';
 import { getServerUrl } from '@/sync/serverConfig';
 import { getHappyClientId } from '@/sync/apiSocket';
 
+/**
+ * One account link request (see `auth/accountPairing.ts`). `pairingSecret`
+ * goes only into the QR code; it is never sent to the server or logged.
+ */
 export interface QRAuthKeyPair {
     publicKey: Uint8Array;
     secretKey: Uint8Array;
+    pairingSecret: Uint8Array;
 }
 
 export function generateAuthKeyPair(): QRAuthKeyPair {
@@ -16,6 +21,7 @@ export function generateAuthKeyPair(): QRAuthKeyPair {
     return {
         publicKey: keypair.publicKey,
         secretKey: keypair.privateKey,
+        pairingSecret: getRandomBytes(32),
     };
 }
 

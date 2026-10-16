@@ -865,7 +865,15 @@ export const zhHans: TranslationStructure = {
         failedToConnectTerminal: '连接终端失败',
         cameraPermissionsRequiredToConnectTerminal: '连接终端需要相机权限',
         failedToLinkDevice: '链接设备失败',
-        cameraPermissionsRequiredToScanQr: '扫描二维码需要相机权限'
+        cameraPermissionsRequiredToScanQr: '扫描二维码需要相机权限',
+        linkDeviceConfirmTitle: '链接新设备？',
+        linkDeviceConfirmMessage: '这会授予对你账户的完全访问权限。新设备将能读取你的所有会话并以你的身份操作。仅当此二维码显示在你本人此刻正在设置的设备上时才继续。',
+        linkDeviceConfirmButton: '链接设备',
+        linkDeviceOutdated: '此二维码来自旧版 Happy。请在新设备上更新 Happy 后重新扫描，或使用你的密钥恢复。',
+        linkDeviceAlreadyAnsweredTitle: '链接请求已被响应',
+        linkDeviceAlreadyAnsweredMessage: '在你之前，已有其他人响应了此链接请求。新设备现在可能已登录到其他账户。请不要使用它：在该设备上登出，然后重新链接。',
+        accountLinkRejectedTitle: '未登录',
+        accountLinkRejectedMessage: '此响应并非来自你的另一部手机。你的服务器或网络可能正在篡改链接。未保存任何内容。'
     },
 
     navigation: {

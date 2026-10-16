@@ -865,7 +865,15 @@ export const ja: TranslationStructure = {
         failedToConnectTerminal: 'ターミナルの接続に失敗しました',
         cameraPermissionsRequiredToConnectTerminal: 'ターミナルの接続にはカメラの権限が必要です',
         failedToLinkDevice: 'デバイスのリンクに失敗しました',
-        cameraPermissionsRequiredToScanQr: 'QRコードのスキャンにはカメラの権限が必要です'
+        cameraPermissionsRequiredToScanQr: 'QRコードのスキャンにはカメラの権限が必要です',
+        linkDeviceConfirmTitle: '新しいデバイスをリンクしますか？',
+        linkDeviceConfirmMessage: 'これにより、アカウントへのフルアクセスが許可されます。新しいデバイスはすべてのセッションを読み取り、あなたとして操作できます。このコードが、今あなた自身が設定しているデバイスに表示されている場合にのみ続行してください。',
+        linkDeviceConfirmButton: 'デバイスをリンク',
+        linkDeviceOutdated: 'このコードは古いバージョンのHappyのものです。新しいデバイスのHappyを更新してから再度スキャンするか、シークレットキーで復元してください。',
+        linkDeviceAlreadyAnsweredTitle: 'リンクリクエストは既に応答済みです',
+        linkDeviceAlreadyAnsweredMessage: 'あなたより先に別の誰かがこのリンクリクエストに応答しました。新しいデバイスは別のアカウントにサインインしている可能性があります。使用しないでください。そのデバイスでログアウトしてから、もう一度リンクしてください。',
+        accountLinkRejectedTitle: 'サインインしていません',
+        accountLinkRejectedMessage: 'この応答は、あなたのもう一台のスマートフォンから送られたものではありません。サーバーまたはネットワークがリンクを改ざんしている可能性があります。何も保存されていません。'
     },
 
     navigation: {

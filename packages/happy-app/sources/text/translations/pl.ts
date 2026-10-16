@@ -880,7 +880,15 @@ export const pl: TranslationStructure = {
         failedToConnectTerminal: 'Nie udało się połączyć terminala',
         cameraPermissionsRequiredToConnectTerminal: 'Uprawnienia do kamery są wymagane do połączenia terminala',
         failedToLinkDevice: 'Nie udało się połączyć urządzenia',
-        cameraPermissionsRequiredToScanQr: 'Uprawnienia do kamery są wymagane do skanowania kodów QR'
+        cameraPermissionsRequiredToScanQr: 'Uprawnienia do kamery są wymagane do skanowania kodów QR',
+        linkDeviceConfirmTitle: 'Połączyć nowe urządzenie?',
+        linkDeviceConfirmMessage: 'To daje pełny dostęp do Twojego konta. Nowe urządzenie będzie mogło czytać wszystkie Twoje sesje i działać w Twoim imieniu. Kontynuuj tylko wtedy, gdy ten kod jest na urządzeniu, które sam teraz konfigurujesz.',
+        linkDeviceConfirmButton: 'Połącz urządzenie',
+        linkDeviceOutdated: 'Ten kod pochodzi ze starszej wersji Happy. Zaktualizuj Happy na nowym urządzeniu i zeskanuj ponownie albo przywróć je kluczem tajnym.',
+        linkDeviceAlreadyAnsweredTitle: 'Prośba o połączenie ma już odpowiedź',
+        linkDeviceAlreadyAnsweredMessage: 'Ktoś inny odpowiedział na tę prośbę o połączenie przed Tobą. Nowe urządzenie mogło zostać zalogowane na inne konto. Nie używaj go: wyloguj się na nim, a potem połącz je ponownie.',
+        accountLinkRejectedTitle: 'Nie zalogowano',
+        accountLinkRejectedMessage: 'Odpowiedź nie pochodzi z Twojego drugiego telefonu. Twój serwer lub sieć mogą ingerować w połączenie. Nic nie zostało zapisane.'
     },
 
     navigation: {

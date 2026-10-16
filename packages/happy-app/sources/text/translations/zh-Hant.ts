@@ -864,7 +864,15 @@ export const zhHant: TranslationStructure = {
         failedToConnectTerminal: '連線終端失敗',
         cameraPermissionsRequiredToConnectTerminal: '連線終端需要相機權限',
         failedToLinkDevice: '連結裝置失敗',
-        cameraPermissionsRequiredToScanQr: '掃描 QR Code 需要相機權限'
+        cameraPermissionsRequiredToScanQr: '掃描 QR Code 需要相機權限',
+        linkDeviceConfirmTitle: '連結新裝置？',
+        linkDeviceConfirmMessage: '這會授予你帳戶的完整存取權限。新裝置將能讀取你的所有工作階段並以你的身分操作。僅在此 QR 碼顯示於你本人此刻正在設定的裝置上時才繼續。',
+        linkDeviceConfirmButton: '連結裝置',
+        linkDeviceOutdated: '此 QR 碼來自舊版 Happy。請在新裝置上更新 Happy 後重新掃描，或使用你的金鑰恢復。',
+        linkDeviceAlreadyAnsweredTitle: '連結請求已被回應',
+        linkDeviceAlreadyAnsweredMessage: '在你之前，已有其他人回應了此連結請求。新裝置現在可能已登入其他帳戶。請不要使用它：在該裝置上登出，然後重新連結。',
+        accountLinkRejectedTitle: '未登入',
+        accountLinkRejectedMessage: '此回應並非來自你的另一支手機。你的伺服器或網路可能正在竄改連結。未儲存任何內容。'
     },
 
     navigation: {

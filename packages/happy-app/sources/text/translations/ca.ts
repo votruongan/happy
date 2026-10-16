@@ -864,7 +864,15 @@ export const ca: TranslationStructure = {
         failedToConnectTerminal: 'Ha fallat connectar el terminal',
         cameraPermissionsRequiredToConnectTerminal: 'Es requereixen permisos de càmera per connectar el terminal',
         failedToLinkDevice: 'Ha fallat enllaçar el dispositiu',
-        cameraPermissionsRequiredToScanQr: 'Es requereixen permisos de càmera per escanejar codis QR'
+        cameraPermissionsRequiredToScanQr: 'Es requereixen permisos de càmera per escanejar codis QR',
+        linkDeviceConfirmTitle: 'Enllaçar un dispositiu nou?',
+        linkDeviceConfirmMessage: 'Això dona accés complet al teu compte. El dispositiu nou podrà llegir totes les teves sessions i actuar en nom teu. Continua només si aquest codi és en un dispositiu que estàs configurant tu mateix, ara.',
+        linkDeviceConfirmButton: 'Enllaça el dispositiu',
+        linkDeviceOutdated: 'Aquest codi és d\'una versió antiga de Happy. Actualitza Happy al dispositiu nou i torna a escanejar, o restaura\'l amb la teva clau secreta.',
+        linkDeviceAlreadyAnsweredTitle: 'La sol·licitud ja té resposta',
+        linkDeviceAlreadyAnsweredMessage: 'Algú altre ha respost aquesta sol·licitud d\'enllaç abans que tu. Pot ser que el dispositiu nou hagi iniciat sessió en un altre compte. No l\'utilitzis: tanca-hi la sessió i torna\'l a enllaçar.',
+        accountLinkRejectedTitle: 'No s\'ha iniciat la sessió',
+        accountLinkRejectedMessage: 'La resposta no ve del teu altre telèfon. Pot ser que el teu servidor o la teva xarxa estiguin manipulant l\'enllaç. No s\'ha desat res.'
     },
 
     navigation: {
