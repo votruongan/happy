@@ -838,6 +838,8 @@ export const zhHant: TranslationStructure = {
         clientSideProcessing: '用戶端處理',
         linkProcessedLocally: '連結在瀏覽器中本機處理',
         linkProcessedOnDevice: '連結在裝置上本機處理',
+        alreadyConnectedTitle: '終端已被連線',
+        alreadyConnectedMessage: '其他人可能已比你先連線此終端。請不要使用它。在你的電腦上執行 `happy auth logout`，接著執行 `happy auth login` 並掃描新的 QR 碼。',
     },
 
     modals: {

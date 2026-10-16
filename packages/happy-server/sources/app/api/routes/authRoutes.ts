@@ -3,7 +3,6 @@ import { type Fastify } from "../types";
 import * as privacyKit from "privacy-kit";
 import { db } from "@/storage/db";
 import { auth } from "@/app/auth/auth";
-import { log } from "@/utils/log";
 
 export function authRoutes(app: Fastify) {
     app.post('/v1/auth', {
@@ -66,7 +65,6 @@ export function authRoutes(app: Fastify) {
         }
 
         const publicKeyHex = privacyKit.encodeHex(publicKey);
-        log({ module: 'auth-request' }, `Terminal auth request - publicKey hex: ${publicKeyHex}`);
 
         const answer = await db.terminalAuthRequest.upsert({
             where: { publicKey: publicKeyHex },
@@ -124,6 +122,16 @@ export function authRoutes(app: Fastify) {
     });
 
     // Approve auth request
+    //
+    // Only the first answer is stored, and the store is atomic: the write only
+    // matches a row that has no answer yet, so two answers that race cannot both
+    // win. A later answer gets 409 `already-answered`, which tells the approving
+    // app that someone else answered this terminal first. A retry of the stored
+    // answer by the same account still succeeds (idempotent).
+    //
+    // The server cannot tell which account owns the terminal. A terminal that
+    // checks the pairing secret in the reply rejects an answer from anyone who
+    // did not scan its QR code; this route only makes the race visible.
     app.post('/v1/auth/response', {
         preHandler: app.authenticate,
         schema: {
@@ -133,36 +141,30 @@ export function authRoutes(app: Fastify) {
             })
         }
     }, async (request, reply) => {
-        log({ module: 'auth-response' }, `Auth response endpoint hit - user: ${request.userId}, publicKey: ${request.body.publicKey.substring(0, 20)}...`);
         const tweetnacl = (await import("tweetnacl")).default;
         const publicKey = privacyKit.decodeBase64(request.body.publicKey);
         const isValid = tweetnacl.box.publicKeyLength === publicKey.length;
         if (!isValid) {
-            log({ module: 'auth-response' }, `Invalid public key length: ${publicKey.length}`);
             return reply.code(401).send({ error: 'Invalid public key' });
         }
         const publicKeyHex = privacyKit.encodeHex(publicKey);
-        log({ module: 'auth-response' }, `Looking for auth request with publicKey hex: ${publicKeyHex}`);
+        const { count } = await db.terminalAuthRequest.updateMany({
+            where: { publicKey: publicKeyHex, response: null },
+            data: { response: request.body.response, responseAccountId: request.userId }
+        });
+        if (count > 0) {
+            return reply.send({ success: true });
+        }
         const authRequest = await db.terminalAuthRequest.findUnique({
             where: { publicKey: publicKeyHex }
         });
         if (!authRequest) {
-            log({ module: 'auth-response' }, `Auth request not found for publicKey: ${publicKeyHex}`);
-            // Let's also check what auth requests exist
-            const allRequests = await db.terminalAuthRequest.findMany({
-                take: 5,
-                orderBy: { createdAt: 'desc' }
-            });
-            log({ module: 'auth-response' }, `Recent auth requests in DB: ${JSON.stringify(allRequests.map(r => ({ id: r.id, publicKey: r.publicKey.substring(0, 20) + '...', hasResponse: !!r.response })))}`);
             return reply.code(404).send({ error: 'Request not found' });
         }
-        if (!authRequest.response) {
-            await db.terminalAuthRequest.update({
-                where: { id: authRequest.id },
-                data: { response: request.body.response, responseAccountId: request.userId }
-            });
+        if (authRequest.responseAccountId === request.userId && authRequest.response === request.body.response) {
+            return reply.send({ success: true });
         }
-        return reply.send({ success: true });
+        return reply.code(409).send({ error: 'already-answered' });
     });
 
     // Account auth request
@@ -211,6 +213,9 @@ export function authRoutes(app: Fastify) {
     });
 
     // Approve account auth request
+    //
+    // Same rule as /v1/auth/response: the first answer is stored atomically, a
+    // retry of it by the same account succeeds, and any other answer gets 409.
     app.post('/v1/auth/account/response', {
         preHandler: app.authenticate,
         schema: {
@@ -226,19 +231,24 @@ export function authRoutes(app: Fastify) {
         if (!isValid) {
             return reply.code(401).send({ error: 'Invalid public key' });
         }
+        const publicKeyHex = privacyKit.encodeHex(publicKey);
+        const { count } = await db.accountAuthRequest.updateMany({
+            where: { publicKey: publicKeyHex, response: null },
+            data: { response: request.body.response, responseAccountId: request.userId }
+        });
+        if (count > 0) {
+            return reply.send({ success: true });
+        }
         const authRequest = await db.accountAuthRequest.findUnique({
-            where: { publicKey: privacyKit.encodeHex(publicKey) }
+            where: { publicKey: publicKeyHex }
         });
         if (!authRequest) {
             return reply.code(404).send({ error: 'Request not found' });
         }
-        if (!authRequest.response) {
-            await db.accountAuthRequest.update({
-                where: { id: authRequest.id },
-                data: { response: request.body.response, responseAccountId: request.userId }
-            });
+        if (authRequest.responseAccountId === request.userId && authRequest.response === request.body.response) {
+            return reply.send({ success: true });
         }
-        return reply.send({ success: true });
+        return reply.code(409).send({ error: 'already-answered' });
     });
 
 }

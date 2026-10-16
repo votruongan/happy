@@ -1,12 +1,11 @@
-import { decodeBase64, encodeBase64, encodeBase64Url } from "@/api/encryption";
+import { encodeBase64 } from "@/api/encryption";
 import { configuration } from "@/configuration";
 import { randomBytes } from "node:crypto";
-import tweetnacl from 'tweetnacl';
 import axios from 'axios';
 import { displayQRCode } from "./qrcode";
 import { delay } from "@/utils/time";
-import { writeCredentialsLegacy, readCredentials, updateSettings, Credentials, writeCredentialsDataKey } from "@/persistence";
-import { generateWebAuthUrl } from "@/api/webAuth";
+import { readCredentials, updateSettings, Credentials, writeCredentialsDataKey } from "@/persistence";
+import { createPairingRequest, PairingRequest, pairingMobileUrl, pairingWebUrl, PAIRING_TIMEOUT_MS, verifyPairingResponse } from "@/api/pairing";
 import { openBrowser } from "@/utils/browser";
 import { AuthSelector, AuthMethod } from "./ink/AuthSelector";
 import { render } from 'ink';
@@ -24,19 +23,21 @@ export async function doAuth(): Promise<Credentials | null> {
         process.exit(0);
     }
 
-    // Generating ephemeral key
-    const secret = new Uint8Array(randomBytes(32));
-    const keypair = tweetnacl.box.keyPair.fromSecretKey(secret);
+    // One-time keypair and pairing secret (see api/pairing.ts). Only the
+    // public key goes to the server; the pairing secret is only in the QR
+    // code / URL.
+    const request = createPairingRequest();
 
     // Create a new authentication request
     try {
         if (process.env.DEBUG) {
             console.log(`[AUTH DEBUG] Sending auth request to: ${configuration.serverUrl}/v1/auth/request`);
-            console.log(`[AUTH DEBUG] Public key: ${encodeBase64(keypair.publicKey).substring(0, 20)}...`);
+            console.log(`[AUTH DEBUG] Public key: ${encodeBase64(request.keypair.publicKey).substring(0, 20)}...`);
         }
         await axios.post(`${configuration.serverUrl}/v1/auth/request`, {
-            publicKey: encodeBase64(keypair.publicKey),
-            supportsV2: true
+            publicKey: encodeBase64(request.keypair.publicKey),
+            supportsV2: true,
+            pairingVersion: 3
         }, {
             headers: {
                 'X-Happy-Client': `cli/${configuration.currentCliVersion}`
@@ -55,9 +56,9 @@ export async function doAuth(): Promise<Credentials | null> {
 
     // Handle authentication based on selected method
     if (authMethod === 'mobile') {
-        return await doMobileAuth(keypair);
+        return await doMobileAuth(request);
     } else {
-        return await doWebAuth(keypair);
+        return await doWebAuth(request);
     }
 }
 
@@ -94,29 +95,32 @@ function selectAuthenticationMethod(): Promise<AuthMethod | null> {
 /**
  * Handle mobile authentication flow
  */
-async function doMobileAuth(keypair: tweetnacl.BoxKeyPair): Promise<Credentials | null> {
+async function doMobileAuth(request: PairingRequest): Promise<Credentials | null> {
     console.clear();
     console.log('\nMobile Authentication\n');
     console.log('Scan this QR code with your Happy mobile app:\n');
 
-    const authUrl = 'happy://terminal?' + encodeBase64Url(keypair.publicKey);
+    const authUrl = pairingMobileUrl(request);
     displayQRCode(authUrl);
 
     console.log('\nOr manually enter this URL:');
     console.log(authUrl);
     console.log('');
+    console.log('This code connects this computer to your account. Do not share it.');
+    console.log('It needs an up-to-date Happy app.');
+    console.log('');
 
-    return await waitForAuthentication(keypair);
+    return await waitForAuthentication(request);
 }
 
 /**
  * Handle web authentication flow
  */
-async function doWebAuth(keypair: tweetnacl.BoxKeyPair): Promise<Credentials | null> {
+async function doWebAuth(request: PairingRequest): Promise<Credentials | null> {
     console.clear();
     console.log('\nWeb Authentication\n');
 
-    const webUrl = generateWebAuthUrl(keypair.publicKey);
+    const webUrl = pairingWebUrl(request);
     console.log('Opening your browser...');
 
     const browserOpened = await openBrowser(webUrl);
@@ -136,16 +140,20 @@ async function doWebAuth(keypair: tweetnacl.BoxKeyPair): Promise<Credentials | n
     console.log(webUrl);
     console.log('');
 
-    return await waitForAuthentication(keypair);
+    return await waitForAuthentication(request);
 }
 
 /**
- * Wait for authentication to complete and return credentials
+ * Wait for the user's app to answer, then save credentials only if the
+ * answer passes verifyPairingResponse. Stops after PAIRING_TIMEOUT_MS. A
+ * reply that fails the check ends pairing: the server decides what comes
+ * next, so polling on would only wait for another forged reply.
  */
-async function waitForAuthentication(keypair: tweetnacl.BoxKeyPair): Promise<Credentials | null> {
+async function waitForAuthentication(request: PairingRequest): Promise<Credentials | null> {
     process.stdout.write('Waiting for authentication');
     let dots = 0;
     let cancelled = false;
+    const deadline = Date.now() + PAIRING_TIMEOUT_MS;
 
     // Handle Ctrl-C during waiting
     const handleInterrupt = () => {
@@ -157,61 +165,40 @@ async function waitForAuthentication(keypair: tweetnacl.BoxKeyPair): Promise<Cre
     process.on('SIGINT', handleInterrupt);
 
     try {
-        while (!cancelled) {
+        while (!cancelled && Date.now() < deadline) {
             try {
                 const response = await axios.post(`${configuration.serverUrl}/v1/auth/request`, {
-                    publicKey: encodeBase64(keypair.publicKey),
-                    supportsV2: true
+                    publicKey: encodeBase64(request.keypair.publicKey),
+                    supportsV2: true,
+                    pairingVersion: 3
                 }, {
                     headers: {
                         'X-Happy-Client': `cli/${configuration.currentCliVersion}`
                     }
                 });
                 if (response.data.state === 'authorized') {
-                    let token = response.data.token as string;
-                    let r = decodeBase64(response.data.response);
-                    let decrypted = decryptWithEphemeralKey(r, keypair.secretKey);
-                    if (decrypted) {
-                        if (decrypted.length === 32) {
-                            const credentials = {
-                                secret: decrypted,
-                                token: token
-                            }
-                            await writeCredentialsLegacy(credentials);
-                            console.log('\n\n✓ Authentication successful\n');
-                            return {
-                                encryption: {
-                                    type: 'legacy',
-                                    secret: decrypted
-                                },
-                                token: token
-                            };
-                        } else {
-                            if (decrypted[0] === 0) {
-                                const credentials = {
-                                    publicKey: decrypted.slice(1, 33),
-                                    machineKey: randomBytes(32),
-                                    token: token
-                                }
-                                await writeCredentialsDataKey(credentials);
-                                console.log('\n\n✓ Authentication successful\n');
-                                return {
-                                    encryption: {
-                                        type: 'dataKey',
-                                        publicKey: credentials.publicKey,
-                                        machineKey: credentials.machineKey
-                                    },
-                                    token: token
-                                };
-                            } else {
-                                console.log('\n\nFailed to decrypt response. Please try again.');
-                                return null;
-                            }
-                        }
-                    } else {
-                        console.log('\n\nFailed to decrypt response. Please try again.');
+                    const verified = verifyPairingResponse(String(response.data.response), request.keypair.secretKey, request.pairingSecret);
+                    if (!verified.ok) {
+                        logger.debug(`[AUTH] Pairing reply rejected: ${verified.reason}`);
+                        console.log('\n\nPairing failed: the reply did not come from your Happy app.');
+                        console.log('Your server or network may be tampering with the pairing. Nothing was saved.');
                         return null;
                     }
+                    const credentials = {
+                        publicKey: verified.contentPublicKey,
+                        machineKey: new Uint8Array(randomBytes(32)),
+                        token: response.data.token as string
+                    };
+                    await writeCredentialsDataKey(credentials);
+                    console.log('\n\n✓ Authentication successful\n');
+                    return {
+                        encryption: {
+                            type: 'dataKey',
+                            publicKey: credentials.publicKey,
+                            machineKey: credentials.machineKey
+                        },
+                        token: credentials.token
+                    };
                 }
             } catch (error) {
                 console.log('\n\nFailed to check authentication status. Please try again.');
@@ -228,21 +215,9 @@ async function waitForAuthentication(keypair: tweetnacl.BoxKeyPair): Promise<Cre
         process.off('SIGINT', handleInterrupt);
     }
 
+    console.log('\n\nNo reply. If scanning did nothing, your Happy app is too old: update it,');
+    console.log('or run `happy auth login` and choose Web.');
     return null;
-}
-
-export function decryptWithEphemeralKey(encryptedBundle: Uint8Array, recipientSecretKey: Uint8Array): Uint8Array | null {
-    // Extract components from bundle: ephemeral public key (32 bytes) + nonce (24 bytes) + encrypted data
-    const ephemeralPublicKey = encryptedBundle.slice(0, 32);
-    const nonce = encryptedBundle.slice(32, 32 + tweetnacl.box.nonceLength);
-    const encrypted = encryptedBundle.slice(32 + tweetnacl.box.nonceLength);
-
-    const decrypted = tweetnacl.box.open(encrypted, nonce, ephemeralPublicKey, recipientSecretKey);
-    if (!decrypted) {
-        return null;
-    }
-
-    return decrypted;
 }
 
 
