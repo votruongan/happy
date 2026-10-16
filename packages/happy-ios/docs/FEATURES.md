@@ -34,7 +34,7 @@ accident.
 - [x] Welcome, create account, restore with QR, restore with the secret key (`restore/*`)
 - [x] Custom server (`server.tsx`), onboarding settings (`onboarding/settings.tsx`)
 - [x] Link Your Computer, offline checklist, troubleshoot (`troubleshoot.tsx`)
-- [x] Connect a terminal by QR or URL; `happy://terminal` deep links (`terminal/*`)
+- [x] Connect a terminal by QR or URL, after the person accepts it; `happy://pair/terminal` (current CLIs) and `happy://terminal` (older CLIs) deep links (`terminal/*`, `pair/terminal`)
 - [x] The machine screen that troubleshoot rows open — Secondary
 - [x] Copy terminal commands by selecting them (`TerminalBlock.tsx`): every line in the offline checklist and on troubleshoot is selectable, and a selection never takes in the `$ ` prompt — Home
 

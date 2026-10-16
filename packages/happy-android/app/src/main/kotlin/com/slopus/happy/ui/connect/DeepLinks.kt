@@ -32,11 +32,16 @@ import java.util.Base64
 /** Where a link from outside the app goes. */
 sealed interface DeepLink {
     /**
-     * terminal/index.tsx: the confirm screen for `happy://terminal?<key>`.
-     * [publicKey] is the first search parameter's name, as the screen reads
-     * it; null shows "Invalid Connection Link".
+     * terminal/index.tsx: the confirm screen for a terminal link.
+     * `happy://pair/terminal?key=<pk>&s=<ps>` (current CLIs) carries both
+     * values; `happy://terminal?<pk>` (older CLIs) only [publicKey], the
+     * first search parameter's name, with no [pairingSecret]. The screen
+     * shows "Invalid Connection Link" for a link that doesn't parse.
      */
-    data class Terminal(val publicKey: String?) : DeepLink
+    data class Terminal(val publicKey: String?, val pairingSecret: String? = null) : DeepLink {
+        // The pairing secret is only for the confirm screen, never for logs.
+        override fun toString() = "Terminal"
+    }
 
     /**
      * terminal/connect.tsx: the CLI's web link (`/terminal/connect#key=…`).
@@ -87,7 +92,9 @@ private fun route(segments: List<String>, rawQuery: String?): DeepLink? {
     fun screen(route: Any) = DeepLink.Screen(route)
     fun signedOut(route: Any) = DeepLink.Screen(route, signedOut = true)
     return when (segments) {
-        listOf("terminal") -> DeepLink.Terminal(firstParamName(rawQuery))
+        listOf("terminal") -> terminal(query, rawQuery)
+        // Only the v3 form. A link here without its pairing secret is invalid, never a legacy link.
+        listOf("pair", "terminal") -> DeepLink.Terminal(query["key"] ?: "", query["s"] ?: "")
         listOf("terminal", "connect") -> DeepLink.TerminalWeb
         listOf("new") -> screen(NewSessionRoute)
         listOf("settings") -> screen(SettingsRoute)
@@ -108,6 +115,17 @@ private fun route(segments: List<String>, rawQuery: String?): DeepLink? {
             else -> sessionRoute(segments[1], segments.drop(2), query)
         }
     }
+}
+
+/**
+ * terminal/index.tsx's params: `key` and `s` together are a v3 link (as
+ * pair/terminal routes here in happy-app); otherwise the first search
+ * parameter's name is an older CLI's key.
+ */
+private fun terminal(query: Map<String, String>, rawQuery: String?): DeepLink.Terminal {
+    val key = query["key"]
+    val secret = query["s"]
+    return if (key != null && secret != null) DeepLink.Terminal(key, secret) else DeepLink.Terminal(firstParamName(rawQuery))
 }
 
 /** session/[id] and the screens under it. */

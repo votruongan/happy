@@ -788,6 +788,8 @@
     <string name="terminal_client_side_processing">Procesamiento del lado del cliente</string>
     <string name="terminal_link_processed_locally">Enlace procesado localmente en el navegador</string>
     <string name="terminal_link_processed_on_device">Enlace procesado localmente en el dispositivo</string>
+    <string name="terminal_already_connected_title">La terminal ya está conectada</string>
+    <string name="terminal_already_connected_message">Es posible que otra persona haya conectado esta terminal antes que tú. No la uses. En tu ordenador, ejecuta `happy auth logout` y después `happy auth login`, y escanea el código nuevo.</string>
 
     <string name="modals_authenticate_terminal">Autenticar terminal</string>
     <string name="modals_paste_url_from_terminal">Pega la URL de autenticación de tu terminal</string>

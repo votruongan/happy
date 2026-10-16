@@ -770,6 +770,8 @@
     <string name="terminal_client_side_processing">Client-Side Processing</string>
     <string name="terminal_link_processed_locally">Link processed locally in browser</string>
     <string name="terminal_link_processed_on_device">Link processed locally on device</string>
+    <string name="terminal_already_connected_title">Terminal already connected</string>
+    <string name="terminal_already_connected_message">Someone else may have connected this terminal before you. Do not use it. On your computer, run `happy auth logout`, then `happy auth login` and scan the new code.</string>
 
     <string name="modals_authenticate_terminal">Authenticate Terminal</string>
     <string name="modals_paste_url_from_terminal">Paste the authentication URL from your terminal</string>

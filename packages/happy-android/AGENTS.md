@@ -381,10 +381,25 @@ Entry points other screens call (all in `ui/onboarding` and `ui/connect`):
   the URL row shows `EnterTerminalUrlPrompt(connect, onDismiss = …)` while open.
 - **Settings › Account › Link New Device**: `val link = rememberAccountLink(graph)`;
   the row calls `link.scan()`, subtitle `common_scanning` and disabled while
-  `link.isLoading`. Both flows show their own alerts while composed.
+  `link.isLoading`. Both flows show their own alerts while composed. A
+  terminal scan or pasted link asks the person to accept it first
+  (`connect.processAuthUrl` doesn't: it is for the confirm screen's Accept).
 - **Deep links**: MainActivity offers every launching and new intent to
   `DeepLinks.offer(intent)`; `DeepLinkEffect(nav, signedIn, onOpenSession)`
   in HappyApp opens them once signed in. `onOpenSession` is the chat's.
+
+### Terminal pairing
+
+`auth/PairingLinks.kt` parses terminal links, as happy-app's
+`auth/terminalPairing.ts` does: `happy://pair/terminal?key=<pk>&s=<ps>` from
+current CLIs, `happy://terminal?<pk>` from older ones. Both values must be
+32 bytes of base64url. The link alone picks the reply, boxed to `pk`:
+`0x03 || contentPublicKey || ps` for v3, `0x00 || contentPublicKey` for the
+old form. No reply holds the account secret, and the server's `supportsV2`
+is not read. A request that is already answered (`authorized`, or 409 on
+the answer) is the "someone else may have connected this terminal" warning,
+not success; an unknown one is an error. Never log a scanned or pasted link:
+a v3 link carries `ps`.
 
 ### QR codes
 
@@ -410,7 +425,8 @@ decodes the drawn pixels back to the link.
 `happy://` links route as expo-router routes them for happy-app (the host
 is the first path segment), and so do `https://app.happy.engineering/<path>`
 links. Every app path maps to its Compose route (`parseDeepLink` in
-`ui/connect/DeepLinks.kt`): `terminal?<key>` opens the confirm screen,
+`ui/connect/DeepLinks.kt`): `pair/terminal?key=<key>&s=<secret>` and an
+older CLI's `terminal?<key>` open the confirm screen,
 `/terminal/connect` explains that the web link needs a browser,
 `/session/<id>` goes to `onOpenSession`, and `/session/<id>/info|changes|
 file?path=<btoa>|message/<mid>`, `/machine/<id>`, `/new`, `/settings/*`,
