@@ -846,6 +846,8 @@ export const ru: TranslationStructure = {
         clientSideProcessing: 'Обработка на стороне клиента',
         linkProcessedLocally: 'Ссылка обработана локально в браузере',
         linkProcessedOnDevice: 'Ссылка обработана локально на устройстве',
+        alreadyConnectedTitle: 'Терминал уже подключён',
+        alreadyConnectedMessage: 'Возможно, кто-то другой подключил этот терминал раньше вас. Не используйте его. На компьютере выполните `happy auth logout`, затем `happy auth login` и отсканируйте новый код.',
     },
 
     modals: {

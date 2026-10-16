@@ -841,6 +841,8 @@ export const zhHans: TranslationStructure = {
         clientSideProcessing: '客户端处理',
         linkProcessedLocally: '链接在浏览器中本地处理',
         linkProcessedOnDevice: '链接在设备上本地处理',
+        alreadyConnectedTitle: '终端已被连接',
+        alreadyConnectedMessage: '其他人可能已先于你连接了此终端。请不要使用它。在你的电脑上运行 `happy auth logout`，然后运行 `happy auth login` 并扫描新的二维码。',
     },
 
     modals: {

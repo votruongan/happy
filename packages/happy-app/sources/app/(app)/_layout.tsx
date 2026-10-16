@@ -188,6 +188,12 @@ export default function RootLayout() {
                 }}
             />
             <Stack.Screen
+                name="pair/terminal"
+                options={{
+                    headerTitle: t('navigation.connectTerminal'),
+                }}
+            />
+            <Stack.Screen
                 name="onboarding/settings"
                 options={{
                     headerShown: true,
