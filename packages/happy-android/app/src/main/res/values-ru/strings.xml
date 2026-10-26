@@ -808,6 +808,8 @@
     <string name="terminal_client_side_processing">Обработка на стороне клиента</string>
     <string name="terminal_link_processed_locally">Ссылка обработана локально в браузере</string>
     <string name="terminal_link_processed_on_device">Ссылка обработана локально на устройстве</string>
+    <string name="terminal_already_connected_title">Терминал уже подключён</string>
+    <string name="terminal_already_connected_message">Возможно, кто-то другой подключил этот терминал раньше вас. Не используйте его. На компьютере выполните `happy auth logout`, затем `happy auth login` и отсканируйте новый код.</string>
 
     <string name="modals_authenticate_terminal">Авторизация терминала</string>
     <string name="modals_paste_url_from_terminal">Вставьте URL авторизации из вашего терминала</string>

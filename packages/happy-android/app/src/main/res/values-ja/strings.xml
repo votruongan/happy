@@ -754,6 +754,8 @@
     <string name="terminal_client_side_processing">クライアントサイド処理</string>
     <string name="terminal_link_processed_locally">リンクはブラウザ内でローカルに処理されました</string>
     <string name="terminal_link_processed_on_device">リンクはデバイス上でローカルに処理されました</string>
+    <string name="terminal_already_connected_title">ターミナルは既に接続されています</string>
+    <string name="terminal_already_connected_message">このターミナルは、あなたより先に別の誰かが接続した可能性があります。使用しないでください。コンピューターで `happy auth logout` を実行し、次に `happy auth login` を実行して、新しいコードをスキャンしてください。</string>
 
     <string name="modals_authenticate_terminal">ターミナルを認証</string>
     <string name="modals_paste_url_from_terminal">ターミナルから認証URLを貼り付けてください</string>
