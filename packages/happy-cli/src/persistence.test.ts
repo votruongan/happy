@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -10,6 +10,7 @@ import {
     readPersistedSessions,
     releaseDaemonLock,
     SandboxConfigSchema,
+    writeCredentialsDataKey,
     type PersistedSession,
 } from './persistence';
 import { resolveLocalReconnectableSession } from './resume/localResumeStore';
@@ -17,6 +18,8 @@ import { resolveLocalReconnectableSession } from './resume/localResumeStore';
 const mockConfiguration = vi.hoisted(() => ({
     daemonLockFile: '',
     daemonStateFile: '',
+    happyHomeDir: '',
+    privateKeyFile: '',
     isDaemonProcess: false,
     logsDir: '/tmp',
     sessionsFile: '',
@@ -328,5 +331,21 @@ describe('persisted session retention', () => {
 
         expect(readFileSync(mockConfiguration.sessionsFile, 'utf-8')).toBe(before);
         expect(readPersistedSessions()).toEqual({});
+    });
+});
+
+describe('writeCredentialsDataKey', () => {
+    it('creates the home directory 0700 and access.key 0600, tightening loose modes', async () => {
+        const home = join(mkdtempSync(join(tmpdir(), 'happy-creds-')), 'home');
+        mockConfiguration.happyHomeDir = home;
+        mockConfiguration.privateKeyFile = join(home, 'access.key');
+        try {
+            await writeCredentialsDataKey({ publicKey: new Uint8Array(32), machineKey: new Uint8Array(32), token: 't' });
+            expect(statSync(home).mode & 0o777).toBe(0o700);
+            expect(statSync(mockConfiguration.privateKeyFile).mode & 0o777).toBe(0o600);
+            expect(JSON.parse(readFileSync(mockConfiguration.privateKeyFile, 'utf8')).token).toBe('t');
+        } finally {
+            rmSync(join(home, '..'), { recursive: true, force: true });
+        }
     });
 });
