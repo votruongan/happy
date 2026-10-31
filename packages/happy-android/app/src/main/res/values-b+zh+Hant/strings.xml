@@ -774,6 +774,14 @@
     <string name="modals_camera_permissions_required_to_connect_terminal">連線終端需要相機權限</string>
     <string name="modals_failed_to_link_device">連結裝置失敗</string>
     <string name="modals_camera_permissions_required_to_scan_qr">掃描 QR Code 需要相機權限</string>
+    <string name="modals_link_device_confirm_title">連結新裝置？</string>
+    <string name="modals_link_device_confirm_message">這會授予你帳戶的完整存取權限。新裝置將能讀取你的所有工作階段並以你的身分操作。僅在此 QR 碼顯示於你本人此刻正在設定的裝置上時才繼續。</string>
+    <string name="modals_link_device_confirm_button">連結裝置</string>
+    <string name="modals_link_device_outdated">此 QR 碼來自舊版 Happy。請在新裝置上更新 Happy 後重新掃描，或使用你的金鑰恢復。</string>
+    <string name="modals_link_device_already_answered_title">連結請求已被回應</string>
+    <string name="modals_link_device_already_answered_message">在你之前，已有其他人回應了此連結請求。新裝置現在可能已登入其他帳戶。請不要使用它：在該裝置上登出，然後重新連結。</string>
+    <string name="modals_account_link_rejected_title">未登入</string>
+    <string name="modals_account_link_rejected_message">此回應並非來自你的另一支手機。你的伺服器或網路可能正在竄改連結。未儲存任何內容。</string>
 
     <string name="navigation_connect_terminal">連線終端</string>
     <string name="navigation_link_new_device">連結新裝置</string>
@@ -836,6 +844,7 @@
     <string name="onboarding_restore_scan">Scan this code with your other phone.</string>
     <string name="onboarding_restore_scan_path">Happy › Settings › Account › Link New Device</string>
     <string name="onboarding_restore_use_key">Use a secret key instead</string>
+    <string name="onboarding_restore_scan_renewed">This is a new code. If scanning does nothing, update Happy on your other phone, or use a secret key instead.</string>
     <string name="onboarding_secret_key_title">Secret Key</string>
     <string name="onboarding_secret_key_body">Paste your secret key. It is in Happy › Settings › Account on your other device.</string>
     <string name="onboarding_restore_button">Restore</string>
