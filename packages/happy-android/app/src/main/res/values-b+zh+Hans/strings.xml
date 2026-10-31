@@ -754,6 +754,8 @@
     <string name="terminal_client_side_processing">客户端处理</string>
     <string name="terminal_link_processed_locally">链接在浏览器中本地处理</string>
     <string name="terminal_link_processed_on_device">链接在设备上本地处理</string>
+    <string name="terminal_already_connected_title">终端已被连接</string>
+    <string name="terminal_already_connected_message">其他人可能已先于你连接了此终端。请不要使用它。在你的电脑上运行 `happy auth logout`，然后运行 `happy auth login` 并扫描新的二维码。</string>
 
     <string name="modals_authenticate_terminal">认证终端</string>
     <string name="modals_paste_url_from_terminal">粘贴来自您终端的认证 URL</string>

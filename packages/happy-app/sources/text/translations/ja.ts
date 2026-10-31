@@ -841,6 +841,8 @@ export const ja: TranslationStructure = {
         clientSideProcessing: 'クライアントサイド処理',
         linkProcessedLocally: 'リンクはブラウザ内でローカルに処理されました',
         linkProcessedOnDevice: 'リンクはデバイス上でローカルに処理されました',
+        alreadyConnectedTitle: 'ターミナルは既に接続されています',
+        alreadyConnectedMessage: 'このターミナルは、あなたより先に別の誰かが接続した可能性があります。使用しないでください。コンピューターで `happy auth logout` を実行し、次に `happy auth login` を実行して、新しいコードをスキャンしてください。',
     },
 
     modals: {

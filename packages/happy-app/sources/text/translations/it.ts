@@ -838,6 +838,8 @@ export const it: TranslationStructure = {
         clientSideProcessing: 'Elaborazione lato client',
         linkProcessedLocally: 'Link elaborato localmente nel browser',
         linkProcessedOnDevice: 'Link elaborato localmente sul dispositivo',
+        alreadyConnectedTitle: 'Terminale già connesso',
+        alreadyConnectedMessage: 'Qualcun altro potrebbe aver connesso questo terminale prima di te. Non usarlo. Sul tuo computer, esegui `happy auth logout`, poi `happy auth login` e scansiona il nuovo codice.',
     },
 
     modals: {
