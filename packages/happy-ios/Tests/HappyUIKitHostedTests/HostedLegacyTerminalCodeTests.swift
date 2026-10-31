@@ -63,11 +63,14 @@ private final class Relay: HTTPTransport, @unchecked Sendable {
 }
 
 /// Add Agent, then a computer's `happy://terminal?` code, in the app's own
-/// window: a new Happy account every time, whatever is here already. The
-/// computer gets it, the window becomes its home, settings (when open)
-/// turns to it, and the person is told; the accounts there were stay.
-/// The camera can't open in the test host (no NSCameraUsageDescription),
-/// so the code goes in where the scanner hands it over, `HappyScan.open`.
+/// window: once the person accepts Connect Terminal, a new Happy account
+/// every time, whatever is here already. The computer gets it, the window
+/// becomes its home, settings (when open) turns to it, and the person is
+/// told; the accounts there were stay. A current CLI's
+/// `happy://pair/terminal?` code gets the same, with its pairing secret in
+/// the reply. The camera can't open in the test host (no
+/// NSCameraUsageDescription), so the code goes in where the scanner hands
+/// it over, `HappyScan.open`.
 @MainActor
 final class HostedLegacyTerminalCodeTests: XCTestCase {
     private enum Here { case nothing, happyAccount, agentConnection }
@@ -98,7 +101,26 @@ final class HostedLegacyTerminalCodeTests: XCTestCase {
         return condition()
     }
 
-    private func run(_ here: Here) async throws {
+    /// Answers the Connect Terminal question once it shows: Accept
+    /// Connection, or Reject. `UIAlertAction` keeps its handler private, so
+    /// a test reaches it by key; a test only.
+    private func answer(in window: UIWindow, accept: Bool = true) async throws {
+        var question: UIAlertController? { window.rootViewController?.presentedViewController as? UIAlertController }
+        let asked = try await until { question.map { $0.title == Strings.Terminal.connectTerminal && !$0.isBeingPresented } ?? false }
+        XCTAssertTrue(asked, "Connect Terminal never asked; presented: \(String(describing: window.rootViewController?.presentedViewController))")
+        let alert = try XCTUnwrap(question)
+        XCTAssertEqual(alert.message, Strings.Terminal.terminalRequestDescription)
+        let acceptAction = try XCTUnwrap(alert.actions.first { $0.title == Strings.Terminal.acceptConnection }, "no Accept Connection")
+        let rejectAction = try XCTUnwrap(alert.actions.first { $0.title == Strings.Terminal.reject && $0.style == .cancel }, "no Reject")
+        let action = accept ? acceptAction : rejectAction
+        typealias Handler = @convention(block) (UIAlertAction) -> Void
+        let handler = try XCTUnwrap(action.value(forKey: "handler") as AnyObject?, "\(action.title ?? "") has no handler")
+        alert.dismiss(animated: false) {
+            unsafeBitCast(handler, to: Handler.self)(action)
+        }
+    }
+
+    private func run(_ here: Here, pairingSecret: Data? = nil) async throws {
         let computer = try terminal()
         let relay = Relay(terminal: computer.publicKey)
         let account = AccountController(
@@ -152,8 +174,10 @@ final class HostedLegacyTerminalCodeTests: XCTestCase {
             settings = page
         }
         let host = try XCTUnwrap(navigation.topViewController)
-        let code = LegacyPairingLink.terminal(publicKey: computer.publicKey).urlString
-        let result = await HappyScan.open(code, intent: .addAccount, context: context, on: host, start: .scan)
+        let code = LegacyPairingLink.terminalLink(publicKey: computer.publicKey, pairingSecret: pairingSecret).urlString
+        let scan = Task { await HappyScan.open(code, intent: .addAccount, context: context, on: host, start: .scan) }
+        try await answer(in: window)
+        let result = await scan.value
         XCTAssertEqual(result, .accountAdded, "\(here)")
 
         // One account more, the new one, active; the others as they were.
@@ -167,7 +191,11 @@ final class HostedLegacyTerminalCodeTests: XCTestCase {
         // The computer has the new account's content key.
         let response = try XCTUnwrap(relay.answer(for: computer.publicKey), "\(here): the computer was never answered")
         let opened = try XCTUnwrap(Box.openAnonymous(response, recipientSecretKey: computer.secretKey))
-        XCTAssertEqual(Data(opened.dropFirst()), session.keys.contentKeyPair.publicKey)
+        if let pairingSecret {
+            XCTAssertEqual(opened, Data([3]) + session.keys.contentKeyPair.publicKey + pairingSecret, "\(here)")
+        } else {
+            XCTAssertEqual(opened, Data([0]) + session.keys.contentKeyPair.publicKey, "\(here)")
+        }
 
         // The window is the new account's home, the person is told, and
         // settings, still on top, shows the new account ticked.
@@ -237,7 +265,71 @@ final class HostedLegacyTerminalCodeTests: XCTestCase {
         await account.signOut()
     }
 
+    /// Pair computer with a computer's code, signed in: nothing reaches the
+    /// computer until the person accepts Connect Terminal, Reject sends
+    /// nothing, a current CLI's reply carries its pairing secret, and the
+    /// same code again is the "Terminal already connected" warning.
+    func testConnectingAComputerAsksFirst() async throws {
+        let computer = try terminal()
+        let secret = Data(repeating: 6, count: 32)
+        let relay = Relay(terminal: computer.publicKey)
+        let account = AccountController(
+            serverConfig: ServerConfig(storage: InMemoryKeyValueStore()), clientID: "ios/test",
+            credentialStore: InMemoryCredentialStore(), storeDirectory: nil,
+            agentTransport: { _ in Unreachable() },
+            rnServerImport: { .confirmed(ServerConfig.defaultServerURL) },
+            transport: relay, connector: NoSockets())
+        await account.agentConnections.setForeground(false)
+        await account.restore()
+        try await account.signIn(Credentials(token: "existing", secret: Data(repeating: 7, count: 32)))
+        let session = try XCTUnwrap(account.session)
+        let context = AppContext(account: account, variant: .preview, version: "test")
+        let scene = try await hostedActiveScene()
+        let hostWindow = scene.keyWindow
+        let window = hostedKeyWindow(in: scene)
+        addTeardownBlock { @MainActor in
+            window.rootViewController?.presentedViewController?.dismiss(animated: false)
+            window.isHidden = true
+            hostWindow?.makeKey()
+        }
+        let host = try XCTUnwrap(window.rootViewController)
+        let code = LegacyPairingLink.terminalV3(publicKey: computer.publicKey, pairingSecret: secret).urlString
+        var presented: UIAlertController? { window.rootViewController?.presentedViewController as? UIAlertController }
+
+        let rejected = Task { await HappyScan.open(code, intent: .connect, context: context, on: host, start: .scan) }
+        try await answer(in: window, accept: false)
+        let rejectedResult = await rejected.value
+        XCTAssertEqual(rejectedResult, .ended)
+        XCTAssertNil(relay.answer(for: computer.publicKey), "a rejected request was answered")
+        let quiet = try await until { presented == nil }
+        XCTAssertTrue(quiet, "something showed after Reject: \(String(describing: presented?.title))")
+
+        let accepted = Task { await HappyScan.open(code, intent: .connect, context: context, on: host, start: .scan) }
+        try await answer(in: window)
+        let acceptedResult = await accepted.value
+        XCTAssertEqual(acceptedResult, .computerConnected)
+        let response = try XCTUnwrap(relay.answer(for: computer.publicKey), "the computer was never answered")
+        let opened = try XCTUnwrap(Box.openAnonymous(response, recipientSecretKey: computer.secretKey))
+        XCTAssertEqual(opened, Data([3]) + session.keys.contentKeyPair.publicKey + secret)
+        XCTAssertNil(opened.range(of: session.keys.secret), "the master secret must not reach a terminal")
+        XCTAssertEqual(account.session?.keys.anonID, session.keys.anonID, "connecting a computer changed the account")
+        let told = try await until { presented?.message == Strings.Modals.terminalConnectedSuccessfully && presented?.isBeingPresented == false }
+        XCTAssertTrue(told, "no success alert, presented: \(String(describing: presented?.title))")
+        presented?.dismiss(animated: false)
+        let dismissed = try await until { presented == nil }
+        XCTAssertTrue(dismissed)
+
+        let again = Task { await HappyScan.open(code, intent: .connect, context: context, on: host, start: .scan) }
+        try await answer(in: window)
+        let againResult = await again.value
+        XCTAssertEqual(againResult, .ended)
+        let warned = try await until { presented?.title == Strings.Terminal.alreadyConnectedTitle }
+        XCTAssertTrue(warned, "no warning, presented: \(String(describing: presented?.title))")
+        XCTAssertEqual(presented?.message, Strings.Terminal.alreadyConnectedMessage)
+    }
+
     func testWithNothingHere() async throws { try await run(.nothing) }
+    func testAV3CodeBesideAHappyAccount() async throws { try await run(.happyAccount, pairingSecret: Data(repeating: 6, count: 32)) }
     func testBesideAHappyAccount() async throws { try await run(.happyAccount) }
     func testBesideAnAgentConnection() async throws { try await run(.agentConnection) }
 }

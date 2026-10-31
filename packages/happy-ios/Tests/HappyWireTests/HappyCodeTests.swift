@@ -19,6 +19,22 @@ final class HappyCodeTests: XCTestCase {
         XCTAssertEqual(HappyCode("  happy://terminal?\(keyText)\n"), .terminal(publicKey: key))
     }
 
+    /// A current CLI's pairing v3 code carries its one-time secret; a v3
+    /// code without a valid one is a broken terminal code, never an older
+    /// one (happy-app auth/terminalPairing.ts).
+    func testAV3TerminalCodeIsATerminalWithItsSecret() {
+        let secret = Data(repeating: 5, count: 32)
+        let secretText = CanonicalBase64URL.encode(secret)
+        XCTAssertEqual(HappyCode("happy://pair/terminal?key=\(keyText)&s=\(secretText)"), .terminal(publicKey: key, pairingSecret: secret))
+        XCTAssertEqual(HappyCode(LegacyPairingLink.terminalV3(publicKey: key, pairingSecret: secret).urlString), .terminal(publicKey: key, pairingSecret: secret))
+        XCTAssertEqual(HappyCode("happy://pair/terminal?key=\(keyText)"), .invalid(.terminal))
+        XCTAssertEqual(HappyCode("happy://pair/terminal?key=\(keyText)&s=short"), .invalid(.terminal))
+        XCTAssertEqual(HappyCode("happy://pair/terminal?\(keyText)"), .invalid(.terminal))
+        XCTAssertEqual(HappyCode("https://app.happy.engineering/terminal/connect#v=3&key=\(keyText)&s=\(secretText)"), .terminal(publicKey: key, pairingSecret: secret))
+        XCTAssertEqual(HappyCode("https://app.happy.engineering/terminal/connect#key=\(keyText)&s=\(secretText)"), .invalid(.terminal))
+        XCTAssertEqual(HappyCode("https://app.happy.engineering/terminal/connect#v=3&key=\(keyText)"), .invalid(.terminal))
+    }
+
     /// happy-app restore/index.tsx:141 and happy-agent src/auth.ts:38.
     func testAnAccountCodeIsAnAccount() {
         XCTAssertEqual(HappyCode("happy:///account?" + keyText), .account(publicKey: key))

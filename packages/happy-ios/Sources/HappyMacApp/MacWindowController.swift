@@ -148,7 +148,7 @@ final class MacWindowController: NSWindowController, NSMenuItemValidation {
 
     @objc func pairComputer(_ sender: Any?) {
         guard account.session != nil, let window else { return }
-        let field = NSTextField(); field.placeholderString = "happy://terminal?…"
+        let field = NSTextField(); field.placeholderString = "happy://pair/terminal?…"
         field.frame.size = NSSize(width: 460, height: 28)
         let alert = NSAlert(); alert.messageText = "Connect a computer"
         alert.informativeText = "Paste the pairing URL shown by Happy on your computer."
@@ -167,7 +167,16 @@ final class MacWindowController: NSWindowController, NSMenuItemValidation {
         alert.addButton(withTitle: "Connect"); alert.addButton(withTitle: "Cancel")
         alert.beginSheetModal(for: window) { [weak self] response in
             guard response == .alertFirstButtonReturn else { return }
-            self?.perform { _ = try await session.pairing.approve(link) }
+            self?.perform {
+                do {
+                    _ = try await session.pairing.approve(link)
+                } catch LegacyPairingError.terminalAlreadyConnected {
+                    // happy-app's terminal.alreadyConnectedMessage: a warning, never success.
+                    self?.showError("Terminal already connected. Someone else may have connected this terminal before you. Do not use it. On your computer, run `happy auth logout`, then `happy auth login` and scan the new code.")
+                } catch LegacyPairingError.terminalNotFound {
+                    self?.showError("This code was already used or has expired. Show a new one on your computer and scan it again.")
+                }
+            }
         }
     }
 

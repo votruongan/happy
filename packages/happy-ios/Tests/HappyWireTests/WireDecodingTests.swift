@@ -148,5 +148,54 @@ final class LegacyPairingLinkTests: XCTestCase {
         XCTAssertNil(LegacyPairingLink("happy://terminal?"))
         XCTAssertNil(LegacyPairingLink("happy://terminal?AAAA"), "not 32 bytes")
         XCTAssertNil(LegacyPairingLink("happy://terminal?!!!"))
+        XCTAssertNil(LegacyPairingLink("happy://terminal?\(LegacyPairingLink.terminal(publicKey: key).urlString.dropFirst(LegacyPairingLink.terminalPrefix.count))&x=1"))
+    }
+
+    func testParsesV3TerminalLinksWithTheirPairingSecret() throws {
+        let secret = Data((0..<32).map { UInt8(200 - $0) })
+        let v3 = LegacyPairingLink.terminalV3(publicKey: key, pairingSecret: secret)
+        XCTAssertTrue(v3.urlString.hasPrefix("happy://pair/terminal?key="))
+        XCTAssertEqual(LegacyPairingLink(v3.urlString), v3)
+        XCTAssertEqual(v3.publicKey, key)
+        XCTAssertEqual(v3.pairingSecret, secret)
+        XCTAssertTrue(v3.isTerminal)
+        XCTAssertFalse(LegacyPairingLink.account(publicKey: key).isTerminal)
+        XCTAssertNil(LegacyPairingLink.terminal(publicKey: key).pairingSecret)
+        XCTAssertEqual(LegacyPairingLink.terminalLink(publicKey: key, pairingSecret: secret), v3)
+        XCTAssertEqual(LegacyPairingLink.terminalLink(publicKey: key, pairingSecret: nil), .terminal(publicKey: key))
+
+        let pk = LegacyPairingLink.terminal(publicKey: key).urlString.dropFirst(LegacyPairingLink.terminalPrefix.count)
+        let ps = LegacyPairingLink.terminal(publicKey: secret).urlString.dropFirst(LegacyPairingLink.terminalPrefix.count)
+        XCTAssertEqual(LegacyPairingLink("happy://pair/terminal?s=\(ps)&key=\(pk)"), v3, "any parameter order")
+        XCTAssertEqual(LegacyPairingLink("happy://pair/terminal?key=\(pk)=&s=\(ps)="), v3, "padded")
+        XCTAssertTrue(LegacyPairingLink.hasTerminalPrefix(v3.urlString))
+        XCTAssertTrue(LegacyPairingLink.hasTerminalPrefix("happy://terminal?\(pk)"))
+        XCTAssertFalse(LegacyPairingLink.hasTerminalPrefix(LegacyPairingLink.account(publicKey: key).urlString))
+        XCTAssertFalse(String(describing: v3).contains(String(ps)), "the secret stays out of logs")
+        XCTAssertFalse(String(reflecting: v3).contains(String(ps)), "the secret stays out of logs")
+    }
+
+    func testAV3LinkWithoutAValidSecretIsInvalidNotLegacy() {
+        let pk = LegacyPairingLink.terminal(publicKey: key).urlString.dropFirst(LegacyPairingLink.terminalPrefix.count)
+        XCTAssertNil(LegacyPairingLink("happy://pair/terminal?key=\(pk)"))
+        XCTAssertNil(LegacyPairingLink("happy://pair/terminal?key=\(pk)&s="))
+        XCTAssertNil(LegacyPairingLink("happy://pair/terminal?key=\(pk)&s=AAAA"), "not 32 bytes")
+        XCTAssertNil(LegacyPairingLink("happy://pair/terminal?key=AAAA&s=\(pk)"), "not 32 bytes")
+        XCTAssertNil(LegacyPairingLink("happy://pair/terminal?\(pk)"))
+    }
+
+    /// happy-app terminalPairing.ts parseTerminalPairingFragment.
+    func testParsesTheWebConnectFragment() {
+        let secret = Data((0..<32).map { UInt8(200 - $0) })
+        let pk = LegacyPairingLink.terminal(publicKey: key).urlString.dropFirst(LegacyPairingLink.terminalPrefix.count)
+        let ps = LegacyPairingLink.terminal(publicKey: secret).urlString.dropFirst(LegacyPairingLink.terminalPrefix.count)
+        XCTAssertEqual(LegacyPairingLink.webTerminal(fragment: "#key=\(pk)"), .terminal(publicKey: key))
+        XCTAssertEqual(LegacyPairingLink.webTerminal(fragment: "v=3&key=\(pk)&s=\(ps)"), .terminalV3(publicKey: key, pairingSecret: secret))
+        // Says v3 or carries s: a complete v3 link or nothing, never the older reply.
+        XCTAssertNil(LegacyPairingLink.webTerminal(fragment: "key=\(pk)&s=\(ps)"))
+        XCTAssertNil(LegacyPairingLink.webTerminal(fragment: "v=3&key=\(pk)"))
+        XCTAssertNil(LegacyPairingLink.webTerminal(fragment: "v=2&key=\(pk)"))
+        XCTAssertNil(LegacyPairingLink.webTerminal(fragment: "v=3&key=\(pk)&s=AAAA"))
+        XCTAssertNil(LegacyPairingLink.webTerminal(fragment: "key=short"))
     }
 }

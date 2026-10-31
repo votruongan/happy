@@ -9,6 +9,8 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.slopus.happy.crypto.Base64Variant
+import com.slopus.happy.crypto.encodeBase64
 import com.slopus.happy.ui.PHONE
 import com.slopus.happy.ui.setHappyContent
 import java.util.concurrent.CopyOnWriteArrayList
@@ -26,6 +28,8 @@ import org.robolectric.annotation.Config
  * - [ConnectKind.Add] is the first screen's Start and the account menu's
  *   Add: the same flow (`LocalAddFlow`), signed out or in.
  * - [ConnectKind.Terminal] is Settings > Scan QR code, signed in.
+ *
+ * Both ask the person to accept a terminal code before it is answered.
  * - [ConnectKind.Account] is Settings > Account > Link New Device, signed in.
  */
 @RunWith(AndroidJUnit4::class)
@@ -39,6 +43,9 @@ class ScanRouteTableTest {
         /** This flow approved it itself, with the URL it passed on. */
         data class Approved(val url: String) : Lands
 
+        /** This flow asked first ("Connect Terminal"), then approved it once accepted. */
+        data class AcceptedThenApproved(val url: String) : Lands
+
         /** It went to agent pairing, with the code it passed on. */
         data class Pairs(val code: String) : Lands
 
@@ -46,7 +53,9 @@ class ScanRouteTableTest {
         data class Says(val message: String) : Lands
     }
 
-    private val terminal = "happy://terminal?abc"
+    private val terminalKey = encodeBase64(ByteArray(32) { 7 }, Base64Variant.Url)
+    private val terminal = "happy://pair/terminal?key=$terminalKey&s=${encodeBase64(ByteArray(32) { 8 }, Base64Variant.Url)}"
+    private val olderTerminal = "happy://terminal?$terminalKey"
     private val account = "happy:///account?abc"
     private val pairing = "happy://direct?eyJ2IjoxfQ"
     private val unknownHappy = "happy://something?else"
@@ -64,16 +73,20 @@ class ScanRouteTableTest {
      * than derived from the code under test.
      */
     private val table: List<Triple<ConnectKind, String, Lands>> = listOf(
-        // Add: the only way in that makes an account. A terminal code creates
-        // it and approves that terminal in one step; a pairing code pairs.
-        Triple(ConnectKind.Add, terminal, Lands.Approved(terminal)),
+        // Add: the only way in that makes an account. A terminal code, once
+        // accepted, creates it and approves that terminal in one step; a
+        // pairing code pairs.
+        Triple(ConnectKind.Add, terminal, Lands.AcceptedThenApproved(terminal)),
+        Triple(ConnectKind.Add, olderTerminal, Lands.AcceptedThenApproved(olderTerminal)),
         Triple(ConnectKind.Add, pairing, Lands.Pairs(pairing)),
         Triple(ConnectKind.Add, account, Lands.Says(accountNeedsPhone)),
         Triple(ConnectKind.Add, unknownHappy, Lands.Says(notHappyHere)),
         Triple(ConnectKind.Add, notHappy, Lands.Says(notHappyHere)),
 
-        // Settings > Scan QR code: this account authenticates a terminal.
-        Triple(ConnectKind.Terminal, terminal, Lands.Approved(terminal)),
+        // Settings > Scan QR code: this account authenticates a terminal, once
+        // the person accepts it.
+        Triple(ConnectKind.Terminal, terminal, Lands.AcceptedThenApproved(terminal)),
+        Triple(ConnectKind.Terminal, olderTerminal, Lands.AcceptedThenApproved(olderTerminal)),
         Triple(ConnectKind.Terminal, pairing, Lands.Pairs(pairing)),
         Triple(ConnectKind.Terminal, account, Lands.Says(accountElsewhere)),
         Triple(ConnectKind.Terminal, unknownHappy, Lands.Says(notHappyHere)),
@@ -83,6 +96,7 @@ class ScanRouteTableTest {
         Triple(ConnectKind.Account, account, Lands.Approved(account)),
         Triple(ConnectKind.Account, pairing, Lands.Pairs(pairing)),
         Triple(ConnectKind.Account, terminal, Lands.Says(terminalElsewhere)),
+        Triple(ConnectKind.Account, olderTerminal, Lands.Says(terminalElsewhere)),
         Triple(ConnectKind.Account, unknownHappy, Lands.Says(notHappyHere)),
         Triple(ConnectKind.Account, notHappy, Lands.Says(notHappyHere)),
     )
@@ -127,7 +141,12 @@ class ScanRouteTableTest {
         rule.runOnIdle { if (paste) flow.connectWithUrl(code) else flow.scan() }
         rule.waitForIdle()
 
-        approved.firstOrNull()?.let { return Lands.Approved(it) }
+        val asked = flow.alert?.title == "Connect Terminal"
+        if (asked) {
+            rule.onNodeWithText("Accept Connection").performClick()
+            rule.waitForIdle()
+        }
+        approved.firstOrNull()?.let { return if (asked) Lands.AcceptedThenApproved(it) else Lands.Approved(it) }
         paired.firstOrNull()?.let { return Lands.Pairs(it) }
         val said = flow.alert?.message ?: error("$kind + $code: nothing happened, and nothing was said")
         rule.onNodeWithText(said).assertExists()

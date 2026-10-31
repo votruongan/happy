@@ -14,7 +14,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.AppGraph
 import com.slopus.happy.auth.AuthState
-import com.slopus.happy.auth.TERMINAL_URL_PREFIX
+import com.slopus.happy.auth.LEGACY_TERMINAL_URL_PREFIX
 import com.slopus.happy.crypto.AccountLink
 import com.slopus.happy.crypto.Base64Variant
 import com.slopus.happy.crypto.Sodium
@@ -117,22 +117,28 @@ class OnboardingFlowTest {
         assertEquals(setOf(publicKey), synchronized(server) { server.accountRequests.keys.toSet() })
     }
 
-    /** The first screen: a terminal link creates an account and approves the terminal with it, in one step. */
+    /** The first screen: a terminal link, once accepted, creates an account and approves the terminal with it, in one step. */
     @Test
     fun aTerminalLinkOnTheFirstScreenCreatesAnAccountThatApprovesIt() {
         val terminal = Sodium.boxKeypair()
         server.addTerminalRequest(terminal.publicKey, supportsV2 = false)
         rule.onNodeWithContentDescription("More").performClick()
         rule.onNodeWithText("Enter link manually").performClick()
-        rule.onNodeWithTag(PromptTags.INPUT).performTextInput(TERMINAL_URL_PREFIX + encodeBase64(terminal.publicKey, Base64Variant.Url))
+        rule.onNodeWithTag(PromptTags.INPUT).performTextInput(LEGACY_TERMINAL_URL_PREFIX + encodeBase64(terminal.publicKey, Base64Variant.Url))
         rule.onNodeWithTag(PromptTags.CONFIRM).performClick()
+        rule.waitUntilAtLeastOneExists(hasText("Accept Connection"), 5_000)
+        rule.onNodeWithText("Accept Connection").performClick()
 
         val key = encodeBase64(terminal.publicKey)
         rule.waitUntil(5_000) { synchronized(server) { server.terminalRequests.getValue(key).response != null } }
         rule.waitUntilAtLeastOneExists(hasTestTag(HomeTags.LINK), 5_000)
         val account = graph.auth.state.value as AuthState.SignedIn
         val response = synchronized(server) { server.terminalRequests.getValue(key).response!! }
-        assertArrayEquals(account.credentials.secretBytes(), decryptBox(decodeBase64(response), terminal.secretKey))
+        // An older CLI's link gets the content public key, never the account secret, even from a v1 requester.
+        assertArrayEquals(
+            byteArrayOf(0) + account.encryption.contentPublicKey,
+            decryptBox(decodeBase64(response), terminal.secretKey),
+        )
     }
 
     /** A terminal link that can't be approved keeps no account: the first screen stays, with the error. */
@@ -140,8 +146,11 @@ class OnboardingFlowTest {
     fun aFailedTerminalApprovalOnTheFirstScreenKeepsNoAccount() {
         rule.onNodeWithContentDescription("More").performClick()
         rule.onNodeWithText("Enter link manually").performClick()
-        rule.onNodeWithTag(PromptTags.INPUT).performTextInput("happy://terminal?abc")
+        // A well-formed link the server has no request for.
+        rule.onNodeWithTag(PromptTags.INPUT).performTextInput(LEGACY_TERMINAL_URL_PREFIX + encodeBase64(Sodium.boxKeypair().publicKey, Base64Variant.Url))
         rule.onNodeWithTag(PromptTags.CONFIRM).performClick()
+        rule.waitUntilAtLeastOneExists(hasText("Accept Connection"), 5_000)
+        rule.onNodeWithText("Accept Connection").performClick()
         rule.waitUntilAtLeastOneExists(hasText("Failed to connect terminal"), 5_000)
         assertEquals(AuthState.SignedOut, graph.auth.state.value)
         assertTrue(graph.accountStore.registry.value.entries.isEmpty())
@@ -156,8 +165,10 @@ class OnboardingFlowTest {
         val account = graph.auth.state.value as AuthState.SignedIn
 
         val terminal = Sodium.boxKeypair()
+        val pairingSecret = ByteArray(32) { 5 }
+        // A requester that says it is v1 still gets the v3 reply its link asks for.
         server.addTerminalRequest(terminal.publicKey, supportsV2 = false)
-        DeepLinks.offer(DeepLink.Terminal(encodeBase64(terminal.publicKey, Base64Variant.Url)))
+        DeepLinks.offer(DeepLink.Terminal(encodeBase64(terminal.publicKey, Base64Variant.Url), encodeBase64(pairingSecret, Base64Variant.Url)))
 
         rule.waitUntilAtLeastOneExists(hasText("Accept Connection"), 5_000)
         rule.onNodeWithText("Accept Connection").performClick()
@@ -165,8 +176,24 @@ class OnboardingFlowTest {
         val key = encodeBase64(terminal.publicKey)
         rule.waitUntil(5_000) { synchronized(server) { server.terminalRequests.getValue(key).response != null } }
         val response = synchronized(server) { server.terminalRequests.getValue(key).response!! }
-        assertArrayEquals(account.credentials.secretBytes(), decryptBox(decodeBase64(response), terminal.secretKey))
+        assertArrayEquals(
+            byteArrayOf(3) + account.encryption.contentPublicKey + pairingSecret,
+            decryptBox(decodeBase64(response), terminal.secretKey),
+        )
         assertNull(DeepLinks.pending.value)
+    }
+
+    @Test
+    fun aPairingLinkWithoutItsSecretIsAnInvalidLink() {
+        runBlocking { graph.auth.createAccount() }
+        rule.waitUntilAtLeastOneExists(hasTestTag(HomeTags.LINK), 5_000)
+        val terminal = Sodium.boxKeypair()
+        server.addTerminalRequest(terminal.publicKey, supportsV2 = true)
+        DeepLinks.offer(DeepLink.Terminal(encodeBase64(terminal.publicKey, Base64Variant.Url), ""))
+
+        rule.waitUntilAtLeastOneExists(hasText("Invalid Connection Link"), 5_000)
+        rule.onNodeWithText("Accept Connection").assertDoesNotExist()
+        assertTrue(server.requestsTo("/v1/auth/response").isEmpty())
     }
 
     @Test

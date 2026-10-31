@@ -18,7 +18,7 @@ enum SettingsConnections {
         let text = await Alerts.prompt(
             Strings.Modals.authenticateTerminal,
             Strings.Modals.pasteUrlFromTerminal,
-            placeholder: "happy://terminal?...",
+            placeholder: "happy://pair/terminal?...",
             confirmTitle: Strings.Common.authenticate,
             on: controller
         )
@@ -26,7 +26,8 @@ enum SettingsConnections {
         return url
     }
 
-    /// Whatever the code is, where `HappyScan` sends it.
+    /// Whatever the code is, where `HappyScan` sends it; a terminal's is
+    /// answered only once the person accepts it there.
     static func approveTerminal(_ text: String, context: AppContext, on controller: UIViewController) async {
         await HappyScan.open(text, intent: .connect, context: context, on: controller, start: .scan)
     }

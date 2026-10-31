@@ -33,6 +33,23 @@ final class ScanRouteTests: XCTestCase {
         XCTAssertEqual(route("happy://terminal?" + keyText, .addAccount, account: false), .newAccountForComputer(publicKey: key))
     }
 
+    /// A current CLI's code keeps its pairing secret to the answer, from
+    /// either scan.
+    func testAV3CodeKeepsItsPairingSecret() {
+        let secret = Data(repeating: 4, count: 32)
+        let text = LegacyPairingLink.terminalV3(publicKey: key, pairingSecret: secret).urlString
+        let connect = route(text, .connect, account: true)
+        XCTAssertEqual(connect, .connectComputer(publicKey: key, pairingSecret: secret))
+        XCTAssertEqual(connect.terminalLink, .terminalV3(publicKey: key, pairingSecret: secret))
+        let add = route(text, .addAccount, account: true)
+        XCTAssertEqual(add, .newAccountForComputer(publicKey: key, pairingSecret: secret))
+        XCTAssertEqual(add.terminalLink, .terminalV3(publicKey: key, pairingSecret: secret))
+        XCTAssertEqual(route("happy://terminal?" + keyText, .connect, account: true).terminalLink, .terminal(publicKey: key))
+        XCTAssertNil(route("happy:///account?" + keyText, .connect, account: true).terminalLink)
+        XCTAssertEqual(route("happy://pair/terminal?key=" + keyText, .connect, account: true), .problem(.invalidTerminal))
+        XCTAssertFalse(String(describing: connect).contains(CanonicalBase64URL.encode(secret)))
+    }
+
     func testAnotherDevicesCodeNeedsAnAccountHere() {
         XCTAssertEqual(route("happy:///account?" + keyText, .addAccount, account: true), .linkDevice(publicKey: key))
         XCTAssertEqual(route("happy:///account?" + keyText, .connect, account: false), .problem(.deviceNeedsAccount))

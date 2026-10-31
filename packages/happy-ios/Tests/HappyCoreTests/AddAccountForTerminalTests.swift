@@ -45,8 +45,12 @@ final class AddAccountForTerminalTests: XCTestCase {
         await account.restore()
         account.beginAddingAccount()
         try await account.signIn(existing)
-        let outcome = try await account.addAccount(approvingTerminal: try terminal())
-        XCTAssertEqual(outcome, .alreadyHandled)
+        do {
+            _ = try await account.addAccount(approvingTerminal: try terminal())
+            XCTFail("a used code went through")
+        } catch {
+            XCTAssertEqual(error as? LegacyPairingError, .terminalAlreadyConnected)
+        }
         XCTAssertEqual(account.session?.credentials, existing)
         XCTAssertEqual(account.accounts.count, 1)
         XCTAssertFalse(account.isAddingAccount)

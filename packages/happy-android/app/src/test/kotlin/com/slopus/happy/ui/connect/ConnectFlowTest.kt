@@ -3,6 +3,7 @@ package com.slopus.happy.ui.connect
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -10,10 +11,15 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.slopus.happy.auth.TerminalAlreadyAnsweredException
+import com.slopus.happy.crypto.Base64Variant
+import com.slopus.happy.crypto.encodeBase64
 import com.slopus.happy.ui.PHONE
 import com.slopus.happy.ui.components.PromptTags
 import com.slopus.happy.ui.setHappyContent
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -26,7 +32,8 @@ import java.util.concurrent.CopyOnWriteArrayList
 
 /**
  * The connect flows (useConnectTerminal.ts, useConnectAccount.ts) with a
- * fake scanner: what is approved, what is ignored, and what the person sees.
+ * fake scanner: what is approved, what is ignored, what the person is asked
+ * first, and what they see.
  */
 @RunWith(AndroidJUnit4::class)
 @Config(qualifiers = PHONE)
@@ -34,7 +41,10 @@ class ConnectFlowTest {
     @get:Rule
     val rule = createComposeRule()
 
-    private val terminalUrl = "happy://terminal?abc"
+    private val key = encodeBase64(ByteArray(32) { 7 }, Base64Variant.Url)
+    private val secret = encodeBase64(ByteArray(32) { 8 }, Base64Variant.Url)
+    private val terminalUrl = "happy://pair/terminal?key=$key&s=$secret"
+    private val legacyTerminalUrl = "happy://terminal?$key"
     private val accountUrl = "happy:///account?abc"
 
     private class FakeScanner : QrScanner {
@@ -53,8 +63,11 @@ class ConnectFlowTest {
     private var errors = 0
     private lateinit var flow: ConnectFlow
 
+    private lateinit var scope: CoroutineScope
+
     private fun setTerminal(withOnError: Boolean = false) {
         rule.setHappyContent {
+            scope = rememberCoroutineScope()
             CompositionLocalProvider(LocalQrScanner provides scanner) {
                 flow = rememberTerminalConnect(
                     approve = { url -> failWith?.let { throw it }; approved += url },
@@ -77,16 +90,93 @@ class ConnectFlowTest {
         }
     }
 
+    /** The confirm alert a scan or a pasted terminal link shows first. */
+    private fun accept() {
+        rule.onNodeWithText("Connect Terminal").assertExists()
+        rule.onNodeWithText("Accept Connection").performClick()
+    }
+
     @Test
-    fun aScannedTerminalCodeIsApprovedQuietly() {
+    fun aScannedTerminalCodeIsApprovedQuietlyOnceAccepted() {
         setTerminal()
         scanner.results += ScanResult.Scanned(terminalUrl)
         rule.runOnIdle { flow.scan() }
+        rule.onNodeWithText("Accept Connection").assertExists()
+        assertTrue(approved.isEmpty())
+        accept()
         rule.waitUntil { successes == 1 }
         assertEquals(listOf(terminalUrl), approved)
         // Success is felt, not announced.
         rule.onNodeWithText("Success").assertDoesNotExist()
         assertFalse(flow.isLoading)
+    }
+
+    @Test
+    fun anOlderCliCodeIsAskedAboutToo() {
+        setTerminal()
+        scanner.results += ScanResult.Scanned(legacyTerminalUrl)
+        rule.runOnIdle { flow.scan() }
+        accept()
+        rule.waitUntil { successes == 1 }
+        assertEquals(listOf(legacyTerminalUrl), approved)
+    }
+
+    @Test
+    fun theFirstScreenAsksFirstAndRejectMakesNothing() {
+        setStart()
+        scanner.results += ScanResult.Scanned(terminalUrl)
+        rule.runOnIdle { flow.scan() }
+        rule.onNodeWithText("Reject").performClick()
+        rule.waitForIdle()
+        assertTrue(approved.isEmpty())
+    }
+
+    @Test
+    fun aRejectedScanSendsNothing() {
+        setTerminal()
+        scanner.results += ScanResult.Scanned(terminalUrl)
+        rule.runOnIdle { flow.scan() }
+        rule.onNodeWithText("Reject").performClick()
+        rule.waitForIdle()
+        rule.onNodeWithText("Connect Terminal").assertDoesNotExist()
+        assertTrue(approved.isEmpty())
+        assertEquals(0, successes)
+    }
+
+    @Test
+    fun aPastedLinkIsAskedAboutAndRejectSendsNothing() {
+        setTerminal()
+        rule.runOnIdle { flow.connectWithUrl(terminalUrl) }
+        rule.onNodeWithText("Connect Terminal").assertExists()
+        rule.onNodeWithText("Reject").performClick()
+        rule.waitForIdle()
+        assertTrue(approved.isEmpty())
+    }
+
+    @Test
+    fun theConfirmScreensAcceptDoesNotAskAgain() {
+        setTerminal()
+        // processAuthUrl is what TerminalConfirmScreen's Accept calls.
+        val result = CompletableDeferred<Boolean>()
+        rule.runOnIdle { scope.launch { result.complete(flow.processAuthUrl(terminalUrl)) } }
+        rule.waitUntil { result.isCompleted }
+        rule.onNodeWithText("Accept Connection").assertDoesNotExist()
+        assertEquals(listOf(terminalUrl), approved)
+    }
+
+    @Test
+    fun anAlreadyAnsweredTerminalIsAWarningNotSuccess() {
+        failWith = TerminalAlreadyAnsweredException()
+        setTerminal(withOnError = true)
+        rule.runOnIdle { flow.connectWithUrl(terminalUrl) }
+        accept()
+        // Shown even to a caller that reports failures itself.
+        rule.onNodeWithText("Terminal already connected").assertExists()
+        rule.onNodeWithText("Failed to connect terminal").assertDoesNotExist()
+        rule.runOnIdle {
+            assertEquals(0, successes)
+            assertEquals(1, errors)
+        }
     }
 
     @Test
@@ -144,7 +234,7 @@ class ConnectFlowTest {
     }
 
     @Test
-    fun aPastedLinkWithoutThePrefixIsInvalid() {
+    fun aPastedLinkThatIsNotAValidTerminalLinkIsInvalid() {
         setTerminal()
         // A Happy code of another kind names the screen it belongs to, as the
         // camera does; only a link of no known kind is simply invalid.
@@ -154,11 +244,27 @@ class ConnectFlowTest {
         rule.onNodeWithText("OK").performClick()
         rule.onNodeWithText(elsewhere).assertDoesNotExist()
 
+        // A terminal link that doesn't parse is invalid before anything is asked.
+        for (url in listOf("happy://terminal?abc", "happy://pair/terminal?key=$key")) {
+            rule.runOnIdle { flow.connectWithUrl(url) }
+            rule.onNodeWithText("Invalid authentication URL").assertExists()
+            rule.onNodeWithText("Connect Terminal").assertDoesNotExist()
+            rule.onNodeWithText("OK").performClick()
+            rule.onNodeWithText("Invalid authentication URL").assertDoesNotExist()
+        }
+
         rule.runOnIdle { flow.connectWithUrl("https://example.com/not-happy") }
         rule.onNodeWithText("Invalid authentication URL").assertExists()
         assertTrue(approved.isEmpty())
-        rule.onNodeWithText("OK").performClick()
-        rule.onNodeWithText("Invalid authentication URL").assertDoesNotExist()
+    }
+
+    @Test
+    fun aScannedTerminalCodeThatDoesNotParseIsInvalid() {
+        setTerminal()
+        scanner.results += ScanResult.Scanned("happy://terminal?abc")
+        rule.runOnIdle { flow.scan() }
+        rule.onNodeWithText("Invalid authentication URL").assertExists()
+        assertTrue(approved.isEmpty())
     }
 
     @Test
@@ -166,6 +272,7 @@ class ConnectFlowTest {
         failWith = IOException("offline")
         setTerminal()
         rule.runOnIdle { flow.connectWithUrl(terminalUrl) }
+        accept()
         rule.onNodeWithText("Failed to connect terminal").assertExists()
         assertEquals(0, successes)
     }
@@ -175,6 +282,7 @@ class ConnectFlowTest {
         failWith = IOException("offline")
         setTerminal(withOnError = true)
         rule.runOnIdle { flow.connectWithUrl(terminalUrl) }
+        accept()
         rule.waitUntil { errors == 1 }
         rule.onNodeWithText("Failed to connect terminal").assertDoesNotExist()
     }
@@ -188,6 +296,7 @@ class ConnectFlowTest {
             }
         }
         rule.runOnIdle { flow.connectWithUrl(terminalUrl) }
+        accept()
         rule.waitUntil { flow.isLoading }
         gate.complete(Unit)
         rule.waitUntil { !flow.isLoading }
@@ -233,6 +342,7 @@ class ConnectFlowTest {
         rule.onNodeWithText("Paste the authentication URL from your terminal").assertExists()
         rule.onNodeWithTag(PromptTags.INPUT).performTextInput("  $terminalUrl ")
         rule.onNodeWithText("Authenticate").performClick()
+        accept()
         rule.waitUntil { approved.isNotEmpty() }
         assertEquals(listOf(terminalUrl), approved)
         assertFalse(showing)
@@ -248,12 +358,13 @@ class ConnectFlowTest {
         }
     }
 
-    /** The first screen: a terminal code is approved (by a new account), a pairing code pairs, the rest say what they are. */
+    /** The first screen: a terminal code is approved (by a new account) once accepted, a pairing code pairs, the rest say what they are. */
     @Test
     fun theFirstScreenRoutesEveryCode() {
         setStart()
         scanner.results += ScanResult.Scanned(terminalUrl)
         rule.runOnIdle { flow.scan() }
+        accept()
         rule.waitUntil { approved.isNotEmpty() }
         assertEquals(listOf(terminalUrl), approved)
         rule.onNodeWithText("Error").assertDoesNotExist()
@@ -274,6 +385,7 @@ class ConnectFlowTest {
     fun theFirstScreenRoutesPastedLinks() {
         setStart()
         rule.runOnIdle { flow.connectWithUrl(" $terminalUrl ") }
+        accept()
         rule.waitUntil { approved.isNotEmpty() }
         assertEquals(listOf(terminalUrl), approved)
         rule.runOnIdle { flow.connectWithUrl("happy://direct?xyz") }
@@ -292,13 +404,26 @@ class ConnectFlowTest {
         failWith = IOException("offline")
         setStart()
         rule.runOnIdle { flow.connectWithUrl(terminalUrl) }
+        accept()
         rule.onNodeWithText("Failed to connect terminal").assertExists()
         assertFalse(flow.isLoading)
     }
 
     @Test
+    fun anAlreadyAnsweredTerminalOnTheFirstScreenIsAWarning() {
+        failWith = TerminalAlreadyAnsweredException()
+        setStart()
+        rule.runOnIdle { flow.connectWithUrl(terminalUrl) }
+        accept()
+        rule.onNodeWithText("Terminal already connected").assertExists()
+        rule.onNodeWithText("Failed to connect terminal").assertDoesNotExist()
+        assertTrue(approved.isEmpty())
+    }
+
+    @Test
     fun codesAreClassifiedByKind() {
         assertEquals(HappyCode.Terminal(terminalUrl), HappyCode.classify(" $terminalUrl "))
+        assertEquals(HappyCode.Terminal(legacyTerminalUrl), HappyCode.classify(legacyTerminalUrl))
         assertEquals(HappyCode.Account(accountUrl), HappyCode.classify(accountUrl))
         assertEquals(HappyCode.AgentPairing("happy://direct?abc"), HappyCode.classify("happy://direct?abc"))
         // Malformed pairing codes stay pairing codes; they never fall back to relay approval.
