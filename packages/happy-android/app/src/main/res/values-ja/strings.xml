@@ -774,6 +774,14 @@
     <string name="modals_camera_permissions_required_to_connect_terminal">ターミナルの接続にはカメラの権限が必要です</string>
     <string name="modals_failed_to_link_device">デバイスのリンクに失敗しました</string>
     <string name="modals_camera_permissions_required_to_scan_qr">QRコードのスキャンにはカメラの権限が必要です</string>
+    <string name="modals_link_device_confirm_title">新しいデバイスをリンクしますか？</string>
+    <string name="modals_link_device_confirm_message">これにより、アカウントへのフルアクセスが許可されます。新しいデバイスはすべてのセッションを読み取り、あなたとして操作できます。このコードが、今あなた自身が設定しているデバイスに表示されている場合にのみ続行してください。</string>
+    <string name="modals_link_device_confirm_button">デバイスをリンク</string>
+    <string name="modals_link_device_outdated">このコードは古いバージョンのHappyのものです。新しいデバイスのHappyを更新してから再度スキャンするか、シークレットキーで復元してください。</string>
+    <string name="modals_link_device_already_answered_title">リンクリクエストは既に応答済みです</string>
+    <string name="modals_link_device_already_answered_message">あなたより先に別の誰かがこのリンクリクエストに応答しました。新しいデバイスは別のアカウントにサインインしている可能性があります。使用しないでください。そのデバイスでログアウトしてから、もう一度リンクしてください。</string>
+    <string name="modals_account_link_rejected_title">サインインしていません</string>
+    <string name="modals_account_link_rejected_message">この応答は、あなたのもう一台のスマートフォンから送られたものではありません。サーバーまたはネットワークがリンクを改ざんしている可能性があります。何も保存されていません。</string>
 
     <string name="navigation_connect_terminal">ターミナルを接続</string>
     <string name="navigation_link_new_device">新しいデバイスをリンク</string>
@@ -836,6 +844,7 @@
     <string name="onboarding_restore_scan">Scan this code with your other phone.</string>
     <string name="onboarding_restore_scan_path">Happy › Settings › Account › Link New Device</string>
     <string name="onboarding_restore_use_key">Use a secret key instead</string>
+    <string name="onboarding_restore_scan_renewed">This is a new code. If scanning does nothing, update Happy on your other phone, or use a secret key instead.</string>
     <string name="onboarding_secret_key_title">Secret Key</string>
     <string name="onboarding_secret_key_body">Paste your secret key. It is in Happy › Settings › Account on your other device.</string>
     <string name="onboarding_restore_button">Restore</string>

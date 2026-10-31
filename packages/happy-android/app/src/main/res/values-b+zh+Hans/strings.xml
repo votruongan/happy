@@ -774,6 +774,14 @@
     <string name="modals_camera_permissions_required_to_connect_terminal">连接终端需要相机权限</string>
     <string name="modals_failed_to_link_device">链接设备失败</string>
     <string name="modals_camera_permissions_required_to_scan_qr">扫描二维码需要相机权限</string>
+    <string name="modals_link_device_confirm_title">链接新设备？</string>
+    <string name="modals_link_device_confirm_message">这会授予对你账户的完全访问权限。新设备将能读取你的所有会话并以你的身份操作。仅当此二维码显示在你本人此刻正在设置的设备上时才继续。</string>
+    <string name="modals_link_device_confirm_button">链接设备</string>
+    <string name="modals_link_device_outdated">此二维码来自旧版 Happy。请在新设备上更新 Happy 后重新扫描，或使用你的密钥恢复。</string>
+    <string name="modals_link_device_already_answered_title">链接请求已被响应</string>
+    <string name="modals_link_device_already_answered_message">在你之前，已有其他人响应了此链接请求。新设备现在可能已登录到其他账户。请不要使用它：在该设备上登出，然后重新链接。</string>
+    <string name="modals_account_link_rejected_title">未登录</string>
+    <string name="modals_account_link_rejected_message">此响应并非来自你的另一部手机。你的服务器或网络可能正在篡改链接。未保存任何内容。</string>
 
     <string name="navigation_connect_terminal">连接终端</string>
     <string name="navigation_link_new_device">链接新设备</string>
@@ -836,6 +844,7 @@
     <string name="onboarding_restore_scan">Scan this code with your other phone.</string>
     <string name="onboarding_restore_scan_path">Happy › Settings › Account › Link New Device</string>
     <string name="onboarding_restore_use_key">Use a secret key instead</string>
+    <string name="onboarding_restore_scan_renewed">This is a new code. If scanning does nothing, update Happy on your other phone, or use a secret key instead.</string>
     <string name="onboarding_secret_key_title">Secret Key</string>
     <string name="onboarding_secret_key_body">Paste your secret key. It is in Happy › Settings › Account on your other device.</string>
     <string name="onboarding_restore_button">Restore</string>

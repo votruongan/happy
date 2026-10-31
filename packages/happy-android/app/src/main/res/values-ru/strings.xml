@@ -828,6 +828,14 @@
     <string name="modals_camera_permissions_required_to_connect_terminal">Для подключения терминала требуется доступ к камере</string>
     <string name="modals_failed_to_link_device">Не удалось связать устройство</string>
     <string name="modals_camera_permissions_required_to_scan_qr">Для сканирования QR-кодов требуется доступ к камере</string>
+    <string name="modals_link_device_confirm_title">Привязать новое устройство?</string>
+    <string name="modals_link_device_confirm_message">Это даёт полный доступ к вашему аккаунту. Новое устройство сможет читать все ваши сессии и действовать от вашего имени. Продолжайте, только если этот код показан на устройстве, которое вы сами настраиваете прямо сейчас.</string>
+    <string name="modals_link_device_confirm_button">Привязать устройство</string>
+    <string name="modals_link_device_outdated">Этот код из старой версии Happy. Обновите Happy на новом устройстве и отсканируйте снова или восстановите его секретным ключом.</string>
+    <string name="modals_link_device_already_answered_title">На запрос уже ответили</string>
+    <string name="modals_link_device_already_answered_message">Кто-то другой ответил на этот запрос привязки раньше вас. Возможно, новое устройство теперь вошло в другой аккаунт. Не используйте его: выйдите из аккаунта на нём и привяжите его снова.</string>
+    <string name="modals_account_link_rejected_title">Вход не выполнен</string>
+    <string name="modals_account_link_rejected_message">Ответ пришёл не с вашего другого телефона. Возможно, ваш сервер или сеть вмешиваются в привязку. Ничего не сохранено.</string>
 
     <string name="navigation_connect_terminal">Подключить терминал</string>
     <string name="navigation_link_new_device">Связать новое устройство</string>
@@ -890,6 +898,7 @@
     <string name="onboarding_restore_scan">Scan this code with your other phone.</string>
     <string name="onboarding_restore_scan_path">Happy › Settings › Account › Link New Device</string>
     <string name="onboarding_restore_use_key">Use a secret key instead</string>
+    <string name="onboarding_restore_scan_renewed">This is a new code. If scanning does nothing, update Happy on your other phone, or use a secret key instead.</string>
     <string name="onboarding_secret_key_title">Secret Key</string>
     <string name="onboarding_secret_key_body">Paste your secret key. It is in Happy › Settings › Account on your other device.</string>
     <string name="onboarding_restore_button">Restore</string>
